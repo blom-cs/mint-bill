@@ -58,7 +58,11 @@ CPPUTEST_CXXFLAGS += -DMINTBILL_CSS_PATH=\"../gui/mint-bill.css\"
 CPPUTEST_CXXFLAGS += -DMINTBILL_EMAIL_TXT_PATH=\"../email.txt\"
 CPPUTEST_CXXFLAGS += -DMINTBILL_EMAIL_HTML_PATH=\"../email.html\"
 
+ifneq ($(wildcard /tmp/turso-src/target/release/libturso_sqlite3.a),)
 TURSO_LIBRARY ?= /tmp/turso-src/target/release/libturso_sqlite3.a
+else
+TURSO_LIBRARY ?= /opt/turso/libturso_sqlite3.a
+endif
 
 CPPUTEST_CXXFLAGS +=-std=c++23 
 CPPUTEST_CXXFLAGS += $(shell pkg-config --cflags cairomm-1.16 gtkmm-4.0 poppler-cpp)

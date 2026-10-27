@@ -1,4 +1,4 @@
-# Image that will be used
+# Image that will be used. Publish as dawidblom/admin-system:v5.3.0.
 FROM fedora:40
 
 # Shell that will be used
@@ -16,6 +16,28 @@ RUN dnf -y install \
     
 
 RUN dnf swap libcurl-minimal libcurl
+
+# turso_sqlite3 static library. This is Turso's sqlite3-compatible C API,
+# not the libSQL SDK. The commit matches the tree used for the vendored header.
+# The Rust toolchain is removed after the archive is installed.
+RUN set -o pipefail \
+ && for attempt in 1 2 3 4 5; do \
+      curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh && break; \
+      echo "rustup download failed, attempt ${attempt}" >&2; \
+      sleep 5; \
+    done \
+ && test -s /tmp/rustup-init.sh \
+ && sh /tmp/rustup-init.sh -y --default-toolchain 1.97.1 --profile minimal \
+ && . /root/.cargo/env \
+ && git init /tmp/turso-src \
+ && git -C /tmp/turso-src remote add origin https://github.com/tursodatabase/turso.git \
+ && git -C /tmp/turso-src fetch --depth 1 origin b5d373732bc1025eb0ad21c9ef32c18c5cdb406d \
+ && git -C /tmp/turso-src checkout --detach FETCH_HEAD \
+ && cargo build --manifest-path /tmp/turso-src/Cargo.toml -p turso_sqlite3 --release \
+ && mkdir -p /opt/turso \
+ && cp /tmp/turso-src/target/release/libturso_sqlite3.a /opt/turso/libturso_sqlite3.a \
+ && chmod 644 /opt/turso/libturso_sqlite3.a \
+ && rm -rf /tmp/turso-src /root/.cargo /root/.rustup
 
 ENV USER=admin-system
 ENV HOME_DIR=/home/${USER}

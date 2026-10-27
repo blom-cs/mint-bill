@@ -31,7 +31,7 @@ git clone https://github.com/tursodatabase/turso.git /tmp/turso-src
 cd /tmp/turso-src && cargo build -p turso_sqlite3 --release
 ```
 
-CMake uses `/tmp/turso-src/target/release/libturso_sqlite3.a`. Pass `-DTURSO_LIBRARY=` to use another path. The header is already vendored at `third_party/turso/include/sqlite3.h`. The Turso command-line tool is not required. This is not the libSQL C SDK (`libsql.h`). The database file is a Turso file.
+CMake uses `/tmp/turso-src/target/release/libturso_sqlite3.a` when that file exists, and `/opt/turso/libturso_sqlite3.a` otherwise. Pass `-DTURSO_LIBRARY=` to use another path. The pipeline image installs the archive at `/opt/turso/libturso_sqlite3.a`. The header is already vendored at `third_party/turso/include/sqlite3.h`. The Turso command-line tool is not required. This is not the libSQL C SDK (`libsql.h`). The database file is a Turso file.
 
 
 ## Deployment
