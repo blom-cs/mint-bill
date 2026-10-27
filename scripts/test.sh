@@ -30,7 +30,6 @@ BUILD_TYPE="Debug"
 BUILD_DIR=build
 PROJECT_NAME=$(basename `pwd`)
 BIN_DIR=$BUILD_DIR/${PROJECT_NAME}
-SUPPORTED_BUILD_TYPES=("host" "deploy")
 
 readonly TEST_DIR=$(pwd)/test
 readonly TEST_TYPES=("sca" "coverage" "unit" "show")

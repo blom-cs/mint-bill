@@ -1,0 +1,47 @@
+#!/bin/bash
+# Copy the live Turso database to a local (offline) backup directory.
+# Never writes back to the live database. Copies the MVCC logical log and any
+# WAL sidecars so a running database is restorable as a set.
+set -euo pipefail
+
+APP_ID="@APP_ID@"
+APP_NAME="@APP_NAME@"
+DB_NAME="${APP_NAME}.db"
+
+if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+	DATA_DIR="${XDG_DATA_HOME}/${APP_ID}"
+else
+	DATA_DIR="${HOME}/.local/share/${APP_ID}"
+fi
+
+SRC="${DATA_DIR}/${DB_NAME}"
+BACKUP_ROOT="${MINT_BILL_BACKUP_DIR:-${HOME}/${APP_NAME}-backups}"
+
+if [[ ! -f "${SRC}" ]]; then
+	echo "ERROR: live database not found at ${SRC}" >&2
+	exit 1
+fi
+
+mkdir -p "${BACKUP_ROOT}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+DEST="${BACKUP_ROOT}/${APP_NAME}-${STAMP}.db"
+
+cp -a "${SRC}" "${DEST}"
+if [[ -f "${SRC}-wal" ]]; then
+	cp -a "${SRC}-wal" "${DEST}-wal"
+fi
+if [[ -f "${SRC}-shm" ]]; then
+	cp -a "${SRC}-shm" "${DEST}-shm"
+fi
+if [[ -f "${SRC}-log" ]]; then
+	cp -a "${SRC}-log" "${DEST}-log"
+fi
+
+echo "Backup written: ${DEST}"
+
+# Keep the newest 26 weekly snapshots.
+mapfile -t old_backups < <(ls -1t "${BACKUP_ROOT}/${APP_NAME}-"*.db 2>/dev/null | tail -n +27 || true)
+for old in "${old_backups[@]}"; do
+	[[ -n "${old}" ]] || continue
+	rm -f "${old}" "${old}-wal" "${old}-shm" "${old}-log"
+done

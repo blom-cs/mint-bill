@@ -20,11 +20,9 @@
  *       * Client registration page.
  *       * Invoice page (invoice creation, printing, emailing, saving).
  *       * Statement page (statement creation, printing, emailing, saving).
- *     - Integrating with the password manager to:
- *       * Look up or store the encrypted database password.
- *       * Open a database password window when no password is configured.
- *       * Propagate the password to the page controllers.
- *     - Loading persisted admin data from the database and updating the UI
+ *     - Opening the plain Turso database and loading persisted admin data,
+ *       then showing the admin page or the invoice page.
+ *     - Updating the UI
  *       (for example, the organization label) when valid data exists.
  *
  *   Error conditions and unexpected states are reported via syslog with
@@ -35,16 +33,15 @@
  *
  *****************************************************************************/
 #include <gui.h>
-#include <thread>
-#include <future>
 #include <stack.h>
 #include <syslog.h>
-#include <config.h>
+#include <paths.h>
 #include <gui_parts.h>
 #include <invoice_page.h>
 #include <admin_page.h>
+#include <admin_model.h>
+#include <admin_data.h>
 #include <statement_page.h>
-#include <password_manager.h>
 #include <client_register_page.h>
 
 
@@ -66,9 +63,7 @@ protected:
 	[[nodiscard]] bool settings_setup();
 	[[nodiscard]] bool css_setup();
 	[[nodiscard]] bool window_setup(const Glib::RefPtr<Gtk::Builder>&);
-	[[nodiscard]] bool database_password_components_setup(const Glib::RefPtr<Gtk::Builder>&);
-	void database_password_save_button_on_clicked();
-	void database_password_exist();
+	void show_starting_page();
 	[[nodiscard]] bool stack_setup(const Glib::RefPtr<Gtk::Builder>&);
 	[[nodiscard]] bool search_bar_setup(const Glib::RefPtr<Gtk::Builder>&);
 	[[nodiscard]] bool print_button_setup(const Glib::RefPtr<Gtk::Builder>&);
@@ -76,13 +71,8 @@ protected:
 	[[nodiscard]] bool save_button_setup(const Glib::RefPtr<Gtk::Builder>&);
 
 private:
-	Glib::Dispatcher database_password_dispatcher{};
-	std::future<std::string> database_password_future{};
 	std::shared_ptr<Gtk::Application> app{nullptr};
 	std::shared_ptr<Gtk::Window> mint_bill_window{nullptr};
-	std::unique_ptr<Gtk::Window> database_password_window{nullptr};
-	std::unique_ptr<Gtk::Entry> database_password_entry{nullptr};
-	std::unique_ptr<Gtk::Button> database_password_button{nullptr};
 	std::unique_ptr<Gtk::Label> organization_label{nullptr};
 	gui::admin_page admin_page{};
 	gui::client_register_page client_register_page{};
@@ -121,10 +111,7 @@ int main(int argc, char** argv)
 	return return_code;
 }
 
-mint_bill::mint_bill()
-{
-	this->database_password_dispatcher.connect(sigc::mem_fun(*this, &mint_bill::database_password_exist));
-}
+mint_bill::mint_bill() = default;
 
 bool mint_bill::create()
 {
@@ -150,6 +137,8 @@ int mint_bill::launch(int argc, char** argv)
 
 void mint_bill::activate()
 {
+	(void)app::paths::database();
+
         Glib::RefPtr<Gtk::Builder> ui_builder{Gtk::Builder::create()};
 	if (ui_builder == nullptr)
 	{
@@ -182,13 +171,6 @@ void mint_bill::activate()
 		}
 
 		if (this->window_setup(ui_builder) == false)
-		{
-			syslog(LOG_CRIT, "MINT_BILL: failed to setup the application windows - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			return;
-		}
-
-		if (this->database_password_components_setup(ui_builder) == false)
 		{
 			syslog(LOG_CRIT, "MINT_BILL: failed to setup the application windows - "
 					 "filename %s, line number %d", __FILE__, __LINE__);
@@ -257,6 +239,8 @@ void mint_bill::activate()
 					 "filename %s, line number %d", __FILE__, __LINE__);
 			return;
 		}
+
+		this->show_starting_page();
 	}
 }
 
@@ -266,7 +250,7 @@ bool mint_bill::load_ui_file(const Glib::RefPtr<Gtk::Builder>& ui_builder)
         try
         {
                 verified = true;
-                ui_builder->add_from_file(MINTBILL_UI_PATH);
+                ui_builder->add_from_file(app::paths::ui());
         }
         catch(const Glib::FileError& ex)
         {
@@ -616,7 +600,7 @@ bool mint_bill::css_setup()
 	else
 	{
 		success = true;
-		css_provider->load_from_path(MINTBILL_CSS_PATH);
+		css_provider->load_from_path(app::paths::css());
 		Gtk::StyleContext::add_provider_for_display(
 			display,
 			css_provider,
@@ -634,9 +618,7 @@ bool mint_bill::window_setup(const Glib::RefPtr<Gtk::Builder>& _ui_builder)
 		_ui_builder->get_widget<Gtk::Label>("organization-name")};
         this->mint_bill_window = std::shared_ptr<Gtk::Window> {
 		_ui_builder->get_widget<Gtk::Window>("main-window")};
-	this->database_password_window = std::unique_ptr<Gtk::Window> {
-		_ui_builder->get_widget<Gtk::Window>("database-password-window")};
-        if (this->mint_bill_window == nullptr || this->database_password_window == nullptr)
+        if (this->mint_bill_window == nullptr)
         {
                 syslog(LOG_CRIT, "MINT_BILL: the windows is not valid - "
                                  "filename %s, line number %d", __FILE__, __LINE__);
@@ -644,12 +626,6 @@ bool mint_bill::window_setup(const Glib::RefPtr<Gtk::Builder>& _ui_builder)
         else
         {
                 success = true;
-		this->database_password_future = std::move(std::async(std::launch::async, [this] () {
-			feature::password_manager password_manager{app::config::password_manager_schema_name};
-			std::string password{password_manager.lookup_password(app::config::password_number)};
-			this->database_password_dispatcher.emit();
-			return password;
-		}));
                 this->mint_bill_window->set_visible(true);
                 this->app->add_window(*this->mint_bill_window);
         }
@@ -657,110 +633,28 @@ bool mint_bill::window_setup(const Glib::RefPtr<Gtk::Builder>& _ui_builder)
 	return success;
 }
 
-bool mint_bill::database_password_components_setup(const Glib::RefPtr<Gtk::Builder>& _ui_builder)
+void mint_bill::show_starting_page()
 {
-	bool success{false};
-	this->database_password_entry = std::unique_ptr<Gtk::Entry> {
-		_ui_builder->get_widget<Gtk::Entry>("database-password-entry")};
-	this->database_password_button = std::unique_ptr<Gtk::Button> {
-		_ui_builder->get_widget<Gtk::Button>("database-password-button")};
-	if (this->database_password_entry == nullptr || this->database_password_button == nullptr)
+	model::admin admin_model{app::paths::database()};
+	std::any data{admin_model.load()};
+	data::admin admin_data{std::any_cast<data::admin> (data)};
+	if (admin_data.is_valid() == false)
 	{
-		syslog(LOG_CRIT, "MINT_BILL: the entry button is not valid - "
-				"filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		success = true;
-		this->database_password_button->set_sensitive(true);
-		this->database_password_button->signal_clicked()
-			.connect(sigc::mem_fun(*this, &mint_bill::database_password_save_button_on_clicked));
-	}
-
-	return success;
-}
-
-void mint_bill::database_password_save_button_on_clicked()
-{
-	std::string password{this->database_password_entry->get_text()};
-	this->database_password_future = std::move(std::async(std::launch::async, [password, this] () {
-		feature::password_manager password_manager{app::config::password_manager_schema_name};
-		std::string secret{""};
-		if (password_manager.store_password(password, app::config::password_number) == true)
-		{
-			secret = password_manager.lookup_password(app::config::password_number);
-		}
-		this->database_password_dispatcher.emit();
-
-		return secret;
-	}));
-}
-
-void mint_bill::database_password_exist()
-{
-	std::string password{this->database_password_future.get()};
-	if (password.empty() == true)
-	{
-		syslog(LOG_CRIT, "MINT_BILL: no database password exist - "
-				"filename %s, line number %d", __FILE__, __LINE__);
+		syslog(LOG_CRIT, "MINT_BILL: the admin data is not valid - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
 		if (this->stack.set_current_page("admin-page") == false)
 		{
 			syslog(LOG_CRIT, "MINT_BILL: Failed to make admin-page the visible page - "
 					 "filename %s, line number %d", __FILE__, __LINE__);
 		}
-
-		this->database_password_window->set_visible(true);
-		this->app->add_window(*this->database_password_window);
 	}
 	else
 	{
-		model::admin admin_model{MINTBILL_DB_PATH, password};
-		std::any data{admin_model.load()};
-		data::admin admin_data{std::any_cast<data::admin> (data)};
-		if (admin_data.is_valid() == false)
+		this->organization_label->set_text(admin_data.get_name());
+		if (this->stack.set_current_page("invoice-page") == false)
 		{
-			syslog(LOG_CRIT, "MINT_BILL: the admin data is not valid - "
+			syslog(LOG_CRIT, "MINT_BILL: Failed to make invoice-page the visible page - "
 					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (this->stack.set_current_page("admin-page") == false)
-			{
-				syslog(LOG_CRIT, "MINT_BILL: Failed to make admin-page the visible page - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
 		}
-		else
-		{
-			this->organization_label->set_text(admin_data.get_name());
-			if (this->stack.set_current_page("invoice-page") == false)
-			{
-				syslog(LOG_CRIT, "MINT_BILL: Failed to make invoice-page the visible page - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-
-		if (this->admin_page.set_database_password(password) == false)
-		{
-			syslog(LOG_CRIT, "MINT_BILL: failed to set database password - "
-					"filename %s, line number %d", __FILE__, __LINE__);
-		}
-
-		if (this->client_register_page.set_database_password(password) == false)
-		{
-			syslog(LOG_CRIT, "MINT_BILL: failed to set database password - "
-					"filename %s, line number %d", __FILE__, __LINE__);
-		}
-
-		if (this->invoice_page.set_database_password(password) == false)
-		{
-			syslog(LOG_CRIT, "MINT_BILL: failed to set database password - "
-					"filename %s, line number %d", __FILE__, __LINE__);
-		}
-
-		if (this->statement_page.set_database_password(password) == false)
-		{
-			syslog(LOG_CRIT, "MINT_BILL: failed to set database password - "
-					"filename %s, line number %d", __FILE__, __LINE__);
-		}
-
-		this->database_password_window->close();
 	}
 }

@@ -5,7 +5,7 @@
  *
  * @details
  * This test suite verifies correctness of the client model’s interactions with
- * the underlying SQLite database. It focuses on:
+ * the underlying plain Turso database. It focuses on:
  *
  *   • Validating and saving client records.
  *   • Updating existing client information.
@@ -38,8 +38,7 @@ extern "C"
 TEST_GROUP(client_model_test)
 {
 	const std::string db_file{"../storage/tests/model_test.db"};
-	const std::string db_password{"123456789"};
-        model::client client_model{db_file, db_password};
+        model::client client_model{db_file};
 	void setup()
 	{
 	}

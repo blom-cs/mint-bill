@@ -712,10 +712,9 @@ TEST(invoice_pdf_view_test, extract_invoice_view_data_unsuccessfully)
 TEST_GROUP(statement_pdf_view_test)
 {
 	// const std::string db_file{"../storage/tests/model_test.db"};
-	// const std::string db_password{"123456789"};
 	// data::statement statement_data{test::generate_statement_data()};
-	// storage::database::sqlite database{db_file, db_password};
-	// model::statement statement_model{db_file, db_password};
+	// storage::database::sqlite database{db_file};
+	// model::statement statement_model{db_file};
         Glib::RefPtr<Gtk::Builder> builder{};
         Glib::RefPtr<Gtk::Application> app{};
         gui::part::statement::statement_pdf_view statement_pdf_view{"statement-list-view", "statement-list-view-vadjustment"};

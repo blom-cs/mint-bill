@@ -17,10 +17,9 @@
  * Error conditions (invalid builder, invalid data, failed save attempts) are
  * logged to syslog to aid diagnostics and maintain application robustness.
  *******************************************************************************/
-#include <config.h>
+#include <paths.h>
 #include <syslog.h>
 #include <admin_page.h>
-#include <password_manager.h>
 
 
 //GCOVR_EXCL_START
@@ -46,23 +45,6 @@ bool gui::admin_page::create(const Glib::RefPtr<Gtk::Builder>& _ui_builder)
         }
 
         return created;
-}
-
-bool gui::admin_page::set_database_password(const std::string& _database_password)
-{
-	bool success{false};
-	if (_database_password.empty() == true)
-	{
-                syslog(LOG_CRIT, "ADMIN_PAGE: database password is empty - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		success = true;
-		this->database_password = _database_password;
-	}
-
-	return success;
 }
 
 bool gui::admin_page::search(const std::string& _business_name)
@@ -141,7 +123,7 @@ void gui::admin_page::connect_save_alert()
         }
 
         this->save_alert_dialog->signal_response().connect([this] (int response) {
-		model::admin admin_model{MINTBILL_DB_PATH, this->database_password};
+		model::admin admin_model{app::paths::database()};
                 data::admin data{extract_page_entries()};
                 switch(response)
                 {
@@ -213,7 +195,7 @@ void gui::admin_page::clear_entries()
 
 void gui::admin_page::update_business_info_with_db_data(const std::string& _business_name)
 {
-	model::admin admin_model{MINTBILL_DB_PATH, this->database_password};
+	model::admin admin_model{app::paths::database()};
 	std::any data{admin_model.load(_business_name)};
 	data::admin admin_data{std::any_cast<data::admin> (data)};
         if (admin_data.is_valid() == false)

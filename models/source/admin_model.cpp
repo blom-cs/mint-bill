@@ -1,7 +1,7 @@
 /*******************************************************************************
  * @file admin_model.cpp
  *
- * @brief Implementation of the admin model backed by SQLite.
+ * @brief Implementation of the admin model backed by a plain Turso database.
  *
  * @details
  * This source file defines the behavior of the `model::admin` class, which
@@ -10,8 +10,8 @@
  * objects and transported across the model boundary using `std::any`.
  *
  * Key responsibilities:
- *  - Opening an encrypted SQLite connection using the configured database
- *    file and password.
+ *  - Opening a plain Turso connection from the configured database file.
+ *    There is no database password.
  *  - Loading admin data:
  *      * `load()`       – fetches admin data without a business key.
  *      * `load(name)`   – fetches admin data for a specific business name.
@@ -32,8 +32,8 @@
 #include <business_serialize.h>
 
 
-model::admin::admin(const std::string& _database_file, const std::string& _database_password)
-	: database_file{_database_file}, database_password{_database_password} {}
+model::admin::admin(const std::string& _database_file)
+	: database_file{_database_file} {}
 
 model::admin::~admin() {}
 
@@ -41,7 +41,7 @@ std::any model::admin::load()
 {
         data::admin admin_data;
 	serialize::admin admin_serialize{};
-	storage::database::sqlite database{this->database_file, this->database_password};
+	storage::database::sqlite database{this->database_file};
 	admin_data = std::move(std::any_cast<data::admin> (
 				admin_serialize.extract_data(
 					database.select(sql::query::admin_no_name_select)
@@ -64,7 +64,7 @@ std::any model::admin::load(const std::string& _business_name)
 	{
 		serialize::admin admin_serialize{};
 		storage::database::sql_parameters admin_param = {_business_name};
-		storage::database::sqlite database{this->database_file, this->database_password};
+		storage::database::sqlite database{this->database_file};
 		admin_data = std::move(std::any_cast<data::admin> (
 					admin_serialize.extract_data(
 						database.select(sql::query::admin_select, admin_param)
@@ -106,51 +106,22 @@ bool model::admin::save(const std::any& _data)
 			business_data.get_cellphone(),
 			business_data.get_email()
 		};
-		storage::database::sqlite database{this->database_file, this->database_password};
-		if (database.transaction("BEGIN IMMEDIATE;") == false)
-		{
-			syslog(LOG_CRIT, "ADMIN_MODEL: failed to begin transaction - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (database.transaction("ROLLBACK;") == false)
+		storage::database::sqlite database{this->database_file};
+		saved = database.concurrently([&] () {
+			if (database.usert(sql::query::business_details_usert, business_params) == false)
 			{
-				syslog(LOG_CRIT, "ADMIN_MODEL: failed to rollback - "
+				syslog(LOG_CRIT, "ADMIN_MODEL: failed to execute sql query - "
 						 "filename %s, line number %d", __FILE__, __LINE__);
+				return false;
 			}
-		}
-		else if (database.usert(sql::query::business_details_usert, business_params) == false)
-		{
-			syslog(LOG_CRIT, "ADMIN_MODEL: failed to execute sql query - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (database.transaction("ROLLBACK;") == false)
+			if (database.usert(sql::query::admin_usert, admin_params) == false)
 			{
-				syslog(LOG_CRIT, "ADMIN_MODEL: failed to rollback - "
+				syslog(LOG_CRIT, "ADMIN_MODEL: failed to execute sql query - "
 						 "filename %s, line number %d", __FILE__, __LINE__);
+				return false;
 			}
-		}
-		else if (database.usert(sql::query::admin_usert, admin_params) == false)
-		{
-			syslog(LOG_CRIT, "ADMIN_MODEL: failed to execute sql query - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "ADMIN_MODEL: failed to rollback - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-		else if (database.transaction("COMMIT;") == false)
-		{
-			syslog(LOG_CRIT, "ADMIN_MODEL: failed to commit transaction - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "ADMIN_MODEL: failed to rollback - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-		else
-		{
-			saved = true;
-		}
+			return true;
+		});
         }
 
         return saved;

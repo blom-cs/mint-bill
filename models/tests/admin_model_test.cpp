@@ -12,8 +12,7 @@
  *   • Loading admin records from the database based on business name.
  *   • Ensuring that validation rules are correctly enforced.
  *
- * The test database is isolated under storage/tests/model_test.db and uses a
- * known password to reproduce a controlled test environment. Each test verifies
+ * The test database is the plain file storage/tests/model_test.db. Each test verifies
  * the model’s behavior using lightweight data fixtures and helper utilities.
  *******************************************************************************/
 #include "CppUTest/TestHarness.h"
@@ -36,8 +35,7 @@ extern "C"
 TEST_GROUP(admin_model_test)
 {
 	const std::string db_file{"../storage/tests/model_test.db"};
-	const std::string db_password{"123456789"};
-        model::admin admin_model{db_file, db_password};
+        model::admin admin_model{db_file};
 	void setup()
 	{
 	}

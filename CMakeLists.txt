@@ -17,7 +17,6 @@
 #   • Builds the main application executable
 #   • Recursively adds subdirectories (gui, components, data, storage, models, features, utility)
 #   • Links all modules and system libraries together
-#   • Optionally generates a post-build objdump (.S) output for debugging
 #
 # This file acts as the root of the Mint-Bill build system, orchestrating every subsystem and
 # enforcing consistent compilation settings across the entire project.
@@ -29,10 +28,22 @@ option(INSTALL_APPLICATION "Installing Application" OFF)
 option(UNIT_TESTS "Perform unit tests" OFF)
 option(STATIC_CODE_ANALYSIS "Perform static code analysis" OFF)
 option(CODE_COVERAGE "Perform code coverage" OFF)
-option(APP_NAME "The name of the compiled application executable" "mint-bill")
-option(APP_ID "The name of the compiled application executable" "org.app.mint-bill")
+set(APP_NAME "mint-bill" CACHE STRING "Executable name (mint-bill, mint-bill-tme, mint-bill-tce)")
+set(APP_ID "org.app.mint-bill" CACHE STRING "Application identifier")
+set(APP_DISPLAY_NAME "Mint Bill" CACHE STRING "Pretty application name shown in menus")
 
-project(${APP_NAME} LANGUAGES CXX C ASM)
+# The release version is PROJECT_VERSION_NUM in scripts/build.sh.
+# -DMINT_BILL_VERSION overrides that for the RPM build.
+if(NOT MINT_BILL_VERSION)
+	file(STRINGS "${CMAKE_SOURCE_DIR}/scripts/build.sh" _mint_bill_version_line
+		REGEX "^PROJECT_VERSION_NUM=[0-9]+\\.[0-9]+\\.[0-9]+$")
+	string(REGEX REPLACE "^PROJECT_VERSION_NUM=" "" MINT_BILL_VERSION "${_mint_bill_version_line}")
+endif()
+if(NOT MINT_BILL_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+	message(FATAL_ERROR "PROJECT_VERSION_NUM in scripts/build.sh must be MAJOR.MINOR.PATCH")
+endif()
+
+project(${APP_NAME} VERSION ${MINT_BILL_VERSION} LANGUAGES CXX C ASM)
 
 
 set(CMAKE_C_STANDARD 11)
@@ -45,20 +56,34 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 set(APP_DATA_DIR "share/${APP_ID}")
 set(MINTBILL_UI_PATH_DEFAULT  "${CMAKE_SOURCE_DIR}/gui/mint-bill.ui")
 set(MINTBILL_CSS_PATH_DEFAULT "${CMAKE_SOURCE_DIR}/gui/mint-bill.css")
-set(MINTBILL_DB_PATH_DEFAULT "${CMAKE_SOURCE_DIR}/mint-bill.db" CACHE STRING "Database path (relative to user data dir)")
+set(MINTBILL_DB_PATH_DEFAULT "${CMAKE_SOURCE_DIR}/mint-bill.db")
+set(MINTBILL_EMAIL_TXT_PATH_DEFAULT "${CMAKE_SOURCE_DIR}/email.txt")
+set(MINTBILL_EMAIL_HTML_PATH_DEFAULT "${CMAKE_SOURCE_DIR}/email.html")
 
 set(MINTBILL_UI_PATH  "${MINTBILL_UI_PATH_DEFAULT}"  CACHE STRING "Path to main UI file")
 set(MINTBILL_CSS_PATH "${MINTBILL_CSS_PATH_DEFAULT}" CACHE STRING "Path to CSS file")
-set(MINTBILL_DB_PATH "${MINTBILL_DB_PATH_DEFAULT}" CACHE STRING "Path to DB file")
+set(MINTBILL_DB_PATH "${MINTBILL_DB_PATH_DEFAULT}" CACHE STRING "Development database path")
+set(MINTBILL_DB_TEMPLATE "${MINTBILL_DB_PATH_DEFAULT}" CACHE STRING "Packaged template database path")
+set(MINTBILL_EMAIL_TXT_PATH "${MINTBILL_EMAIL_TXT_PATH_DEFAULT}" CACHE STRING "Path to plain-text email template")
+set(MINTBILL_EMAIL_HTML_PATH "${MINTBILL_EMAIL_HTML_PATH_DEFAULT}" CACHE STRING "Path to HTML email template")
 
 if(BUILD_PROJECT)
         find_package(CURL REQUIRED)
         find_package(PkgConfig REQUIRED)
-	pkg_check_modules(SQLCIPHER REQUIRED sqlcipher)
         pkg_check_modules(GTKMM REQUIRED gtkmm-4.0)
         pkg_check_modules(CAIROMM REQUIRED cairomm-1.16)
         pkg_check_modules(POPPLER REQUIRED poppler-cpp)
-	pkg_check_modules(LIBSECRET REQUIRED libsecret-1)
+	set(TURSO_LIBRARY "/tmp/turso-src/target/release/libturso_sqlite3.a" CACHE FILEPATH "Path to the Turso sqlite3 static library")
+	if(NOT EXISTS "${TURSO_LIBRARY}")
+		message(FATAL_ERROR "Turso library not found at ${TURSO_LIBRARY}. Build it with: cd /tmp/turso-src && cargo build -p turso_sqlite3 --release")
+	endif()
+
+	if(INSTALL_APPLICATION)
+		include(GNUInstallDirs)
+		set(MINTBILL_INSTALL_BINDIR "${CMAKE_INSTALL_FULL_BINDIR}")
+		set(MINTBILL_INSTALL_LIBEXECDIR "${CMAKE_INSTALL_FULL_LIBEXECDIR}")
+		add_compile_definitions(MINTBILL_USE_USER_DATA_DIR=1)
+	endif()
 
         add_compile_options(
                 -Wall
@@ -77,11 +102,14 @@ if(BUILD_PROJECT)
         add_compile_definitions(
                 $<$<CONFIG:DEBUG>:DEBUG>
                 $<$<CONFIG:DEBUG>:TRACE_ENABLED>
-		SQLITE_HAS_CODEC=1
 		MINT_BILL_APP_ID="${APP_ID}"
+		MINT_BILL_APP_NAME="${APP_NAME}"
 		MINTBILL_UI_PATH="${MINTBILL_UI_PATH}"
 		MINTBILL_CSS_PATH="${MINTBILL_CSS_PATH}"
 		MINTBILL_DB_PATH="${MINTBILL_DB_PATH}"
+		MINTBILL_DB_TEMPLATE="${MINTBILL_DB_TEMPLATE}"
+		MINTBILL_EMAIL_TXT_PATH="${MINTBILL_EMAIL_TXT_PATH}"
+		MINTBILL_EMAIL_HTML_PATH="${MINTBILL_EMAIL_HTML_PATH}"
         )
 
 	add_executable(${PROJECT_NAME}
@@ -93,8 +121,7 @@ if(BUILD_PROJECT)
                 ${GTKMM_INCLUDE_DIRS}
                 ${CAIROMM_INCLUDE_DIRS}
                 ${POPPLER_INCLUDE_DIRS}
-		${SQLCIPHER_INCLUDE_DIRS}
-		${LIBSECRET_INCLUDE_DIRS}
+		${CMAKE_SOURCE_DIR}/third_party/turso/include
 
                 ${CMAKE_SOURCE_DIR}/app/include
                 ${CMAKE_SOURCE_DIR}/gui/include
@@ -105,10 +132,6 @@ if(BUILD_PROJECT)
                 ${CMAKE_SOURCE_DIR}/models/include
                 ${CMAKE_SOURCE_DIR}/utility/include
         )
-
-	target_compile_options(${PROJECT_NAME} PRIVATE
-		${SQLCIPHER_CFLAGS_OTHER}
-	)
 
         target_link_options(${PROJECT_NAME} PRIVATE
                 LINKER:-lpthread
@@ -121,8 +144,10 @@ if(BUILD_PROJECT)
                 ${GTKMM_LIBRARIES}
                 ${CAIROMM_LIBRARIES}
                 ${POPPLER_LIBRARIES}
-		${SQLCIPHER_LIBRARIES}
-		${LIBSECRET_LIBRARIES}
+		${TURSO_LIBRARY}
+		dl
+		pthread
+		m
         )
 
         target_link_directories(${PROJECT_NAME}
@@ -184,26 +209,66 @@ if(BUILD_PROJECT)
                 message(STATUS "Directory utility, does not exist")
         endif()
 
-        if (EXISTS ${CMAKE_OBJDUMP})
-                add_custom_command(
-                        TARGET ${PROJECT_NAME}
-                        POST_BUILD
-                        COMMAND ${CMAKE_OBJDUMP} -hS $<TARGET_FILE:${PROJECT_NAME}>
-                        >${CMAKE_CURRENT_BINARY_DIR}/$<TARGET_NAME:${PROJECT_NAME}>.S
-                )
-        else ()
-                message(STATUS "'objdump' not found: cannot generate .S file")
-        endif()
-
 	if (INSTALL_APPLICATION)
+		# Payload layout inside the RPM. The installer copies these into
+		# ~/.local. The live database is <app>.db; this template is a
+		# different filename so upgrades never overwrite customer data.
 		install(FILES
-			${CMAKE_CURRENT_SOURCE_DIR}/mint-bill.db
 			${CMAKE_CURRENT_SOURCE_DIR}/gui/mint-bill.css
 			${CMAKE_CURRENT_SOURCE_DIR}/gui/mint-bill.ui
-			DESTINATION ${APP_DATA_DIR}
+			${CMAKE_CURRENT_SOURCE_DIR}/email.txt
+			${CMAKE_CURRENT_SOURCE_DIR}/email.html
+			DESTINATION ${CMAKE_INSTALL_DATADIR}/${APP_ID}
+		)
+		install(FILES
+			${CMAKE_CURRENT_SOURCE_DIR}/mint-bill.db
+			DESTINATION ${CMAKE_INSTALL_DATADIR}/${APP_ID}
+			RENAME ${APP_NAME}.db.template
 		)
 
-		install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+		install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+		set(PACKAGING_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/packaging)
+		configure_file(
+			${CMAKE_CURRENT_SOURCE_DIR}/packaging/systemd/mint-bill.service.in
+			${PACKAGING_GEN_DIR}/${APP_NAME}.service
+			@ONLY
+		)
+		configure_file(
+			${CMAKE_CURRENT_SOURCE_DIR}/packaging/systemd/mint-bill-db-backup.service.in
+			${PACKAGING_GEN_DIR}/${APP_NAME}-db-backup.service
+			@ONLY
+		)
+		configure_file(
+			${CMAKE_CURRENT_SOURCE_DIR}/packaging/systemd/mint-bill-db-backup.timer.in
+			${PACKAGING_GEN_DIR}/${APP_NAME}-db-backup.timer
+			@ONLY
+		)
+		configure_file(
+			${CMAKE_CURRENT_SOURCE_DIR}/packaging/desktop/mint-bill.desktop.in
+			${PACKAGING_GEN_DIR}/${APP_ID}.desktop
+			@ONLY
+		)
+		configure_file(
+			${CMAKE_CURRENT_SOURCE_DIR}/packaging/scripts/mint-bill-db-backup.sh.in
+			${PACKAGING_GEN_DIR}/${APP_NAME}-db-backup
+			@ONLY
+		)
+
+		install(FILES
+			${PACKAGING_GEN_DIR}/${APP_NAME}.service
+			${PACKAGING_GEN_DIR}/${APP_NAME}-db-backup.service
+			${PACKAGING_GEN_DIR}/${APP_NAME}-db-backup.timer
+			DESTINATION lib/systemd/user
+		)
+		install(FILES
+			${PACKAGING_GEN_DIR}/${APP_ID}.desktop
+			DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+		)
+		install(PROGRAMS
+			${PACKAGING_GEN_DIR}/${APP_NAME}-db-backup
+			DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}
+		)
 	else ()
 		message("Application is not installed.")
 	endif()

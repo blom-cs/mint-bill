@@ -1,100 +1,87 @@
 /*******************************************************************************
  * @file    sqlite.cpp
- * @brief   Implementation of the SQLite/SQLCipher database wrapper.
- *
- * @details This source file implements the encrypted-database management and
- *          SQL-execution mechanisms declared in sqlite.h.
- *
- *          Major responsibilities:
- *            - Opens and configures SQLCipher database connections, including
- *              password-based decryption, PRAGMA configuration, enabling
- *              foreign keys, and applying performance-related settings.
- *
- *            - Implements transaction(), usert(), and select() operations for
- *              executing SQL statements with or without bound parameters.
- *
- *            - Uses part::sql_operations to prepare SQL statements, bind
- *              parameters, step through results, and translate SQLite column
- *              types into std::variant-based C++ values.
- *
- *            - Implements binder, which performs type-specific parameter
- *              binding through std::visit.
- *
- *          Errors encountered during database setup, binding, execution, or
- *          teardown are logged through syslog, and construction-time failures
- *          raise app::errors::construction exceptions to ensure safety.
+ * @brief   Turso connection wrapper. No encryption and no keyring.
  ******************************************************************************/
-#include <numeric>
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <errors.h>
 #include <sqlite.h>
 #include <syslog.h>
 
 
-//GCOVR_EXCL_START
-storage::database::sqlite::sqlite(const std::string& _path, const std::string& _db_password)
+namespace {
+bool is_retryable(int code, sqlite3 *database)
 {
-	if (_path.empty() == true || _db_password.empty() == true)
+	if (code == SQLITE_BUSY)
+	{
+		return true;
+	}
+
+	const char *message{sqlite3_errmsg(database)};
+	if (message == nullptr)
+	{
+		return false;
+	}
+
+	std::string text{message};
+	std::transform(text.begin(), text.end(), text.begin(), [] (unsigned char ch) {
+		return static_cast<char> (std::tolower(ch));
+	});
+	// Turso rolls these back (or leaves them stale) and expects the whole
+	// transaction to be retried. The C API reports them as SQLITE_ERROR.
+	return text.find("conflict") != std::string::npos
+		|| text.find("stale") != std::string::npos
+		|| text.find("commit dependency") != std::string::npos;
+}
+
+bool configure(sqlite3 *database)
+{
+	const char *pragmas[] = {
+		"PRAGMA foreign_keys=ON;",
+		"PRAGMA journal_mode=mvcc;",
+		"PRAGMA synchronous=NORMAL;",
+		"PRAGMA busy_timeout=5000;",
+	};
+	for (const char *sql : pragmas)
+	{
+		if (sqlite3_exec(database, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
+		{
+			syslog(LOG_CRIT, "SQLITE: failed to execute %s - filename %s, line number %d",
+					sql, __FILE__, __LINE__);
+			return false;
+		}
+	}
+
+	return true;
+}
+}
+
+
+storage::database::sqlite::sqlite(const std::string& _path)
+{
+	if (_path.empty() == true)
 	{
 		syslog(LOG_CRIT, "SQLITE: invalid parameters - "
 				 "filename %s, line number %d", __FILE__, __LINE__);
 		throw app::errors::construction;
 	}
-	else
+
+	const int flags{SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX};
+	if (sqlite3_open_v2(_path.c_str(), &this->database, flags, nullptr) != SQLITE_OK)
 	{
-		if (sqlite3_open_v2(_path.c_str(), &this->database, (SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX), nullptr) != SQLITE_OK)
-		{
-			sqlite3_close_v2(this->database);
-			this->database = nullptr;
-			syslog(LOG_CRIT, "SQLITE: failed to open the database - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			throw app::errors::construction;
-		}
+		sqlite3_close_v2(this->database);
+		this->database = nullptr;
+		syslog(LOG_CRIT, "SQLITE: failed to open the database - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		throw app::errors::construction;
+	}
 
-		if (sqlite3_key(this->database, _db_password.data(), static_cast<int> (_db_password.size())) != SQLITE_OK)
-		{
-			sqlite3_close_v2(this->database);
-			this->database = nullptr;
-			syslog(LOG_CRIT, "SQLITE: failed to decrypt the database - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			throw app::errors::construction;
-		}
-
-		if (sqlite3_db_config(this->database, SQLITE_DBCONFIG_ENABLE_FKEY, 1, nullptr) != SQLITE_OK)
-		{
-			sqlite3_close_v2(this->database);
-			this->database = nullptr;
-			syslog(LOG_CRIT, "SQLITE: failed to configure the database - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			throw app::errors::construction;
-		}
-
-		if (sqlite3_exec(this->database, "PRAGMA journal_mode=WAL;",   nullptr, nullptr, nullptr) != SQLITE_OK)
-		{
-			sqlite3_close_v2(this->database);
-			this->database = nullptr;
-			syslog(LOG_CRIT, "SQLITE: failed to execute statement - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			throw app::errors::construction;
-		}
-
-		if (sqlite3_exec(this->database, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr) != SQLITE_OK)
-		{
-			sqlite3_close_v2(this->database);
-			this->database = nullptr;
-			syslog(LOG_CRIT, "SQLITE: failed to execute statement - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			throw app::errors::construction;
-		}
-
-		if (sqlite3_exec(this->database, "PRAGMA busy_timeout=5000;",  nullptr, nullptr, nullptr) != SQLITE_OK)
-		{
-			sqlite3_close_v2(this->database);
-			this->database = nullptr;
-			syslog(LOG_CRIT, "SQLITE: failed to execute statement - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			throw app::errors::construction;
-		}
+	if (configure(this->database) == false)
+	{
+		sqlite3_close_v2(this->database);
+		this->database = nullptr;
+		throw app::errors::construction;
 	}
 }
 
@@ -102,52 +89,42 @@ storage::database::sqlite::~sqlite()
 {
 	if (sqlite3_close_v2(this->database) != SQLITE_OK)
 	{
-                syslog(LOG_CRIT, "SQLITE: failed to close the database connection - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
+		syslog(LOG_CRIT, "SQLITE: failed to close the database connection - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
 	}
 }
-//GCOVR_EXCL_STOP
 
 bool storage::database::sqlite::transaction(const std::string& _sql_query)
 {
-	bool success{false};
 	if (_sql_query.empty() == true)
 	{
-                syslog(LOG_CRIT, "SQLITE: invalid parameters - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		part::sql_operations sql_operations{this->database, _sql_query};
-		success = sql_operations.single_execute();
+		syslog(LOG_CRIT, "SQLITE: invalid parameters - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		return false;
 	}
 
-	return success;
+	part::sql_operations sql_operations{this->database, _sql_query, &this->last_retryable};
+	return sql_operations.single_execute();
 }
 
 bool storage::database::sqlite::usert(const std::string& _sql_query, const std::vector<param_values>& _sql_query_params)
 {
-	bool success{false};
 	if (_sql_query.empty() || _sql_query_params.empty())
 	{
-                syslog(LOG_CRIT, "SQLITE: invalid parameters - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		part::sql_operations sql_operations{this->database, _sql_query};
-		if (sql_operations.bind_params(_sql_query_params) == false)
-		{
-			syslog(LOG_CRIT, "SQLITE: failed to bind the parameters - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-		}
-		else
-		{
-			success = sql_operations.single_execute();
-		}
+		syslog(LOG_CRIT, "SQLITE: invalid parameters - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		return false;
 	}
 
-	return success;
+	part::sql_operations sql_operations{this->database, _sql_query, &this->last_retryable};
+	if (sql_operations.bind_params(_sql_query_params) == false)
+	{
+		syslog(LOG_CRIT, "SQLITE: failed to bind the parameters - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		return false;
+	}
+
+	return sql_operations.single_execute();
 }
 
 storage::database::part::rows storage::database::sqlite::select(const std::string& _sql_query, const std::vector<param_values>& _sql_query_params)
@@ -155,48 +132,96 @@ storage::database::part::rows storage::database::sqlite::select(const std::strin
 	part::rows rows;
 	if (_sql_query.empty() || _sql_query_params.empty())
 	{
-                syslog(LOG_CRIT, "SQLITE: invalid parameters - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		part::sql_operations sql_operations{this->database, _sql_query};
-		if (sql_operations.bind_params(_sql_query_params) == false)
-		{
-			syslog(LOG_CRIT, "SQLITE: failed to bind the parameters - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-		}
-		else
-		{
-			rows = std::move(sql_operations.multi_execute());
-		}
+		syslog(LOG_CRIT, "SQLITE: invalid parameters - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		return rows;
 	}
 
-	return rows;
+	part::sql_operations sql_operations{this->database, _sql_query, &this->last_retryable};
+	if (sql_operations.bind_params(_sql_query_params) == false)
+	{
+		syslog(LOG_CRIT, "SQLITE: failed to bind the parameters - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		return rows;
+	}
+
+	return sql_operations.multi_execute();
 }
 
 storage::database::part::rows storage::database::sqlite::select(const std::string& _sql_query)
 {
-	part::rows rows;
 	if (_sql_query.empty())
 	{
-                syslog(LOG_CRIT, "SQLITE: invalid parameter - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
+		syslog(LOG_CRIT, "SQLITE: invalid parameter - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		return {};
 	}
-	else
+
+	part::sql_operations sql_operations{this->database, _sql_query, &this->last_retryable};
+	return sql_operations.multi_execute();
+}
+
+bool storage::database::sqlite::concurrently(const std::function<bool()>& _work, int _attempts)
+{
+	if (_work == nullptr || _attempts < 1)
 	{
-		part::sql_operations sql_operations{this->database, _sql_query};
-		rows = std::move(sql_operations.multi_execute());
+		return false;
 	}
 
-	return rows;
-} //GCOVR_EXCL_LINE
+	for (int attempt{0}; attempt < _attempts; ++attempt)
+	{
+		this->last_retryable = false;
+		if (this->transaction("BEGIN CONCURRENT;") == false)
+		{
+			if (this->last_retryable == true)
+			{
+				continue;
+			}
+			return false;
+		}
+
+		bool worked{false};
+		try
+		{
+			worked = _work();
+		}
+		catch (...)
+		{
+			(void) this->transaction("ROLLBACK;");
+			throw;
+		}
+
+		if (worked == false)
+		{
+			// ROLLBACK can replace the conflict error, so keep the flag first.
+			const bool retry{this->last_retryable};
+			(void) this->transaction("ROLLBACK;");
+			if (retry == true)
+			{
+				continue;
+			}
+			return false;
+		}
+
+		if (this->transaction("COMMIT;") == true)
+		{
+			return true;
+		}
+
+		const bool retry{this->last_retryable};
+		(void) this->transaction("ROLLBACK;");
+		if (retry == false)
+		{
+			return false;
+		}
+	}
+
+	return false;
+}
 
 
-/*********************************************************************************************************
- * SQL_OPERATIONS
- ********************************************************************************************************/
-storage::database::part::sql_operations::sql_operations(sqlite3* _db_conn, const std::string& _sql_query)
+storage::database::part::sql_operations::sql_operations(sqlite3* _db_conn, const std::string& _sql_query, bool *_retryable)
+	: retryable{_retryable}
 {
 	if (_db_conn == nullptr || _sql_query.empty())
 	{
@@ -204,14 +229,16 @@ storage::database::part::sql_operations::sql_operations(sqlite3* _db_conn, const
 				 "filename %s, line number %d", __FILE__, __LINE__);
 		throw app::errors::construction;
 	}
-	else
+
+	if (sqlite3_prepare_v2(_db_conn, _sql_query.c_str(), -1, &this->sql_stmt, nullptr) != SQLITE_OK)
 	{
-		if (sqlite3_prepare_v2(_db_conn, _sql_query.c_str(), -1, &this->sql_stmt, nullptr) != SQLITE_OK)
+		if (this->retryable != nullptr)
 		{
-			syslog(LOG_CRIT, "SQL_OPERATIONS: failed to prepare sql_stmt - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			throw app::errors::construction;
+			*this->retryable = is_retryable(sqlite3_errcode(_db_conn), _db_conn);
 		}
+		syslog(LOG_CRIT, "SQL_OPERATIONS: failed to prepare sql_stmt - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		throw app::errors::construction;
 	}
 }
 
@@ -228,64 +255,87 @@ storage::database::part::sql_operations::~sql_operations()
 	}
 }
 
+void storage::database::part::sql_operations::note(int _code)
+{
+	if (this->retryable == nullptr || this->sql_stmt == nullptr)
+	{
+		return;
+	}
+
+	*this->retryable = is_retryable(_code, sqlite3_db_handle(this->sql_stmt));
+}
+
 bool storage::database::part::sql_operations::bind_params(const std::vector<param_values>& _sql_query_params)
 {
-	bool success{false};
 	if (_sql_query_params.empty() == true)
 	{
 		syslog(LOG_CRIT, "SQL_OPERATIONS: invalid parameters - "
 				 "filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		if (sqlite3_bind_parameter_count(this->sql_stmt) != static_cast<int> (_sql_query_params.size()))
-		{
-			syslog(LOG_CRIT, "SQL_OPERATIONS: failed to bind the parameter count - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-		}
-		else
-		{
-			success = true;
-			int index{0};
-			for (const param_values& value : _sql_query_params)
-			{
-				std::visit(binder{sql_stmt, ++index}, value);
-			}
-		}
+		return false;
 	}
 
-	return success;
+	if (sqlite3_bind_parameter_count(this->sql_stmt) != static_cast<int> (_sql_query_params.size()))
+	{
+		syslog(LOG_CRIT, "SQL_OPERATIONS: failed to bind the parameter count - "
+				 "filename %s, line number %d", __FILE__, __LINE__);
+		return false;
+	}
+
+	int index{0};
+	const bool failed{std::any_of(_sql_query_params.begin(), _sql_query_params.end(),
+		[&] (const param_values& value) {
+			return std::visit(binder{sql_stmt, ++index}, value) != SQLITE_OK;
+		})};
+	return failed == false;
 }
 
 bool storage::database::part::sql_operations::single_execute()
 {
 	int return_code{sqlite3_step(this->sql_stmt)};
-	return (return_code == SQLITE_DONE && return_code != SQLITE_ROW);
+	if (return_code == SQLITE_ROW)
+	{
+		while (sqlite3_step(this->sql_stmt) == SQLITE_ROW)
+		{
+		}
+		return_code = SQLITE_DONE;
+	}
+	if (return_code != SQLITE_DONE)
+	{
+		this->note(return_code);
+		return false;
+	}
+
+	return true;
 }
 
 storage::database::part::rows storage::database::part::sql_operations::multi_execute()
 {
 	rows rows;
-	while (sqlite3_step(this->sql_stmt) == SQLITE_ROW)
+	int return_code{SQLITE_ROW};
+	while ((return_code = sqlite3_step(this->sql_stmt)) == SQLITE_ROW)
 	{
 		rows.emplace_back(std::move(this->collect_row_data()));
 	}
+	if (return_code != SQLITE_DONE)
+	{
+		this->note(return_code);
+	}
 
 	return rows;
-} //GCOVR_EXCL_LINE
+}
 
 storage::database::part::row storage::database::part::sql_operations::collect_row_data()
 {
 	row row;
 	const int number_of_columns = sqlite3_column_count(this->sql_stmt);
-	row.reserve(number_of_columns);
+	row.reserve(static_cast<std::size_t> (number_of_columns));
 	for (int col = 0; col < number_of_columns; ++col)
 	{
 		row.emplace_back(std::move(convert_column_value(col)));
 	}
 
 	return row;
-} //GCOVR_EXCL_LINE
+}
 
 storage::database::part::column_value storage::database::part::sql_operations::convert_column_value(const int& _col_index)
 {
@@ -307,7 +357,7 @@ storage::database::part::column_value storage::database::part::sql_operations::c
 	{
 		column_value = std::string(reinterpret_cast<const char*>(
 					sqlite3_column_text(this->sql_stmt, _col_index)),
-					sqlite3_column_bytes(this->sql_stmt, _col_index));
+					static_cast<std::size_t> (sqlite3_column_bytes(this->sql_stmt, _col_index)));
 	}
 	else if (column_type == SQLITE_BLOB)
 	{
@@ -316,20 +366,16 @@ storage::database::part::column_value storage::database::part::sql_operations::c
 		storage::database::blob blob;
 		if (number_of_bytes > 0 && bytes != nullptr)
 		{
-			blob.resize(number_of_bytes);
-			std::memcpy(blob.data(), bytes, number_of_bytes);
+			blob.resize(static_cast<std::size_t> (number_of_bytes));
+			std::memcpy(blob.data(), bytes, static_cast<std::size_t> (number_of_bytes));
 		}
 
 		column_value = blob;
 	}
 
 	return column_value;
-} //GCOVR_EXCL_LINE
+}
 
-
-/*************************************************
- * binder
- *************************************************/
 int storage::database::part::binder::operator()(std::nullptr_t) const
 {
 	return sqlite3_bind_null(this->sql_stmt, this->id_index);

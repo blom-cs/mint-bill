@@ -1,0 +1,6 @@
+[Unit]
+Description=@APP_DISPLAY_NAME@ database backup
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/libexec/@APP_NAME@-db-backup

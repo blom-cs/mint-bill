@@ -5,9 +5,8 @@
 # Summary
 # --------
 # Builds the `features` object library, which provides
-# application-level services such as email delivery,
-# PDF generation for invoices and statements, and
-# secure password management.
+# application-level services such as email delivery and
+# PDF generation for invoices and statements.
 #
 # Details
 # -------
@@ -23,7 +22,6 @@
 #       - `email.cpp`          : SMTP email feature
 #       - `invoice_pdf.cpp`    : Invoice PDF generator
 #       - `statement_pdf.cpp`  : Statement PDF generator
-#       - `password_manager.cpp` : Secret-service password manager
 #
 # - Library:
 #   - Target name: `features`
@@ -64,7 +62,6 @@ if(${FILES_IN_DIR} GREATER 0)
                 ${PROJECT_SOURCE_DIR}/source/email.cpp
                 ${PROJECT_SOURCE_DIR}/source/invoice_pdf.cpp
                 ${PROJECT_SOURCE_DIR}/source/statement_pdf.cpp
-                ${PROJECT_SOURCE_DIR}/source/password_manager.cpp
         )
 
         target_include_directories(features
@@ -74,11 +71,11 @@ if(${FILES_IN_DIR} GREATER 0)
                 ${GTKMM_INCLUDE_DIRS}
                 ${POPPLER_INCLUDE_DIRS}
                 ${CAIROMM_INCLUDE_DIRS}
-		${LIBSECRET_INCLUDE_DIRS}
                 PUBLIC
                 ${CMAKE_SOURCE_DIR}/app/include
                 ${CMAKE_SOURCE_DIR}/data/include
                 ${CMAKE_SOURCE_DIR}/storage/include
+                ${CMAKE_SOURCE_DIR}/third_party/turso/include
                 ${CMAKE_SOURCE_DIR}/utility/include
         )
 else ()

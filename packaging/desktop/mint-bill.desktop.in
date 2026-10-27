@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0.0
+Type=Application
+Name=@APP_DISPLAY_NAME@
+GenericName=Billing and Invoicing
+Comment=Manage invoices, statements, and clients
+Exec=@APP_NAME@
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true
+X-GApplication-ID=@APP_ID@

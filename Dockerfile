@@ -12,8 +12,7 @@ RUN dnf -y install \
     glibc-devel curl gtk4 gtk4-devel gtkmm4.0-devel \
     cairomm cairomm-devel libcurl libcurl-devel \ 
     poppler-cpp-devel xorg-x11-server-Xvfb dbus-daemon \
-    dbus-x11 mesa-libGLES sqlcipher sqlcipher-devel \
-    libsecret libsecret-devel
+    dbus-x11 mesa-libGLES
     
 
 RUN dnf swap libcurl-minimal libcurl

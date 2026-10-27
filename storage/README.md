@@ -1,32 +1,11 @@
-# Security Details
-By utilizing SQLCipher the sqlite database is encrypted using a password.    
-This will require the user to store the database password in the keyring   
---Passwords and Keys--. They will have to install this application on their    
-host machine in order for the program to work. Alternatively, the program     
-will prompt the user for the password on the first installation of the application.
+# Database
 
+Mint-Bill stores each business in a plain Turso file. The file is not encrypted, and the application does not use the system keyring.
 
-# Test Database Passwords
-All test databases have the same password **123456789**.
-To open a database run these commands from the root of the project directory.
-Commands:
+Connections to the same file share one database inside the process. Writes use `BEGIN CONCURRENT` and retry when two transactions change the same row.
 
-- To enter the database: `sqlcipher storage/tests/<database_name>`
-- To access the database: `PRAGMA key=123456789;`
-- To list all tabels in the database: `.table` 
+The application does not call a Turso command-line tool. A plain SQLite file can be opened until Turso rewrites it; after that, the file and its `-log` sidecar are the database.
 
-# Production Database 
-The production database passwords are entered at the initial application launch time.   
-Production passwords will never be required to be entered after the initial launch of    
-the application.
+# Test databases
 
-## Production Database Testing
-The following commands and tools can help speed up the system integration tests when      
-utilizating the production database.
-Since this application is using the secret service key ring to hold the database password   
-you can use the **secret-tool** to add, remove, or lookup the database password.
-
-Commands:
-
-- To look up the password: `secret-tool lookup number 0`
-- To remove the password: `secret-tool clear number 0`
+Unit tests create temporary databases under `/tmp`. The files in `storage/tests/` are plain databases used by the model tests.

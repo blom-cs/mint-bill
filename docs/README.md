@@ -25,8 +25,10 @@ and functions.
 ## POPPLER
 - Poppler PDF AP docuemntation: `https://poppler.freedesktop.org/api/cpp/annotated.html`
 
-## SQLCIPHER
-- SQLCipher documentation: `https://github.com/sqlcipher/sqlcipher?tab=readme-ov-file`
+## TURSO
+The application links Turso's sqlite3-compatible C library (`turso_sqlite3`), not the libSQL C SDK.
+- Source and `bindings/c`: `https://github.com/tursodatabase/turso`
+- Vendored header: `third_party/turso/include/sqlite3.h`
+- Build the static library with `cargo build -p turso_sqlite3 --release`. See the root README.
 
-## LIBSECRET
-- Libsecret documentation: `https://gnome.pages.gitlab.gnome.org/libsecret/`
+

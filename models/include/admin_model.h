@@ -10,7 +10,7 @@
  * and client messaging.
  *
  * The model encapsulates:
- *  - Connection details to an encrypted SQLite database (file + password).
+ *  - The path of the plain Turso database. No connection is kept open.
  *  - An API to load admin records either without a key or by business name.
  *  - An API to save admin data received as a type-erased `std::any`.
  *
@@ -28,7 +28,7 @@ namespace model {
 class admin: public interface::model_register {
 public:
 	admin() = delete;
-	explicit admin(const std::string&, const std::string&);
+	explicit admin(const std::string&);
 	admin(const admin& new_data) = delete;
 	admin(admin&&) = default;
 	admin& operator= (const admin&) = delete;
@@ -41,7 +41,6 @@ public:
 
 private:
 	std::string database_file{""};
-	std::string database_password{""};
 
 	enum DATA_FIELDS {
 		NAME = 0,

@@ -34,6 +34,7 @@ if(${FILES_IN_DIR} GREATER 0)
                 ${PROJECT_SOURCE_DIR}/source/word_slicer.cpp
                 ${PROJECT_SOURCE_DIR}/source/date_manager.cpp
                 ${PROJECT_SOURCE_DIR}/source/boundary_slicer.cpp
+                ${PROJECT_SOURCE_DIR}/source/paths.cpp
         )
 
         target_include_directories(utility

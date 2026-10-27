@@ -54,6 +54,7 @@
  *
  *****************************************************************************/
 #include <email.h>
+#include <paths.h>
 
 feature::email::email() {}
 
@@ -300,7 +301,7 @@ bool smtp::parts::text_body(const data::email& _data)
         part = curl_mime_addpart(alt.get());
         if (part)
         {
-                utility::file text_file{"email.txt"};
+                utility::file text_file{app::paths::email_txt()};
                 std::string text{text_file.read()};
 
                 data::client client{_data.get_client()};
@@ -326,7 +327,7 @@ bool smtp::parts::html_body(const data::email& _data)
         part = curl_mime_addpart(alt.get());
         if (part)
         {
-                utility::file html_file{"email.html"};
+                utility::file html_file{app::paths::email_html()};
                 std::string html{html_file.read()};
 
                 data::client client{_data.get_client()};

@@ -50,8 +50,8 @@
 
 
 
-model::statement::statement(const std::string& _database_file, const std::string& _database_password)
-	: database_file{_database_file}, database_password{_database_password} {}
+model::statement::statement(const std::string& _database_file)
+	: database_file{_database_file} {}
 
 model::statement::~statement() {}
 
@@ -65,7 +65,7 @@ std::vector<std::any> model::statement::load(const std::string& _business_name) 
 	}
 	else
 	{
-		storage::database::sqlite database{this->database_file, this->database_password};
+		storage::database::sqlite database{this->database_file};
 		serialize::admin admin_serialize{};
 		data::admin admin_data{
 			std::any_cast<data::admin>(
@@ -159,7 +159,7 @@ bool model::statement::save(const std::any& _data) const
 	}
 	else
         {
-		storage::database::sqlite database{this->database_file, this->database_password};
+		storage::database::sqlite database{this->database_file};
 
 		serialize::admin admin_serialize{};
 		data::admin admin_data{
@@ -183,34 +183,15 @@ bool model::statement::save(const std::any& _data) const
 			statement_data.get_paid_status()
 		};
 
-		if (database.transaction("BEGIN IMMEDIATE;") == false)
-		{
-			if (database.transaction("ROLLBACK;") == false)
+		success = database.concurrently([&] () {
+			if (database.usert(sql::query::statement_usert, statement_params) == false)
 			{
-				syslog(LOG_CRIT, "STATEMENT_MODEL: failed to rollback - "
+				syslog(LOG_CRIT, "STATEMENT_MODEL: failed to save the statement - "
 						 "filename %s, line number %d", __FILE__, __LINE__);
+				return false;
 			}
-		}
-		else if (database.usert(sql::query::statement_usert, statement_params) == false)
-		{
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "STATEMENT_MODEL: failed to rollback - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-		else if (database.transaction("COMMIT;") == false)
-		{
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "STATEMENT_MODEL: failed to rollback - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-		else
-		{
-			success = true;
-		}
+			return true;
+		});
         }
 
         return success;

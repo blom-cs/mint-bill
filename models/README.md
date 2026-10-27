@@ -3,7 +3,7 @@
 The **models** module provides the business-logic layer responsible for loading,
 saving, transforming, and serializing domain data used throughout the
 application.  
-It sits between the storage layer (SQLite), the data structures
+It sits between the storage layer (plain Turso), the data structures
 (`data::…` types), and the PDF/email generation features.
 
 This module follows a clean separation-of-concerns design:
@@ -86,7 +86,7 @@ These provide abstraction layers ensuring:
 ### **admin_model / admin_serialize**
 Responsible for:
 - Loading and saving *business administrative information*.
-- Synchronizing admin settings with underlying SQLite tables.
+- Synchronizing admin settings with the underlying Turso tables.
 - Preparing admin data for use by downstream modules (PDF generation, UI).
 
 ### **client_model / client_serialize**

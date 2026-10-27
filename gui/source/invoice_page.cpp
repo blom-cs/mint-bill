@@ -34,7 +34,7 @@
 #include <chrono>
 #include <ostream>
 #include <syslog.h>
-#include <config.h>
+#include <paths.h>
 #include <invoice_page.h>
 #include <date_manager.h>
 
@@ -132,23 +132,6 @@ bool gui::invoice_page::create(const Glib::RefPtr<Gtk::Builder>& _ui_builder,
         }
 
         return true;
-}
-
-bool gui::invoice_page::set_database_password(const std::string& _database_password)
-{
-	bool success{false};
-	if (_database_password.empty() == true)
-	{
-                syslog(LOG_CRIT, "INVOICE_PAGE: database password is empty - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		success = true;
-		this->database_password = _database_password;
-	}
-
-	return success;
 }
 
 bool gui::invoice_page::search(const std::string& _business_name)
@@ -323,7 +306,7 @@ bool gui::invoice_page::save_setup(const Glib::RefPtr<Gtk::Builder>& _ui_builder
 		else
 		{
 			success = this->save_alert.connect([this] (const int& _response) {
-				model::invoice invoice_model{MINTBILL_DB_PATH, this->database_password};
+				model::invoice invoice_model{app::paths::database()};
 				data::invoice data{this->extract_invoice_data()};
 				switch(_response)
 				{
@@ -412,8 +395,7 @@ bool gui::invoice_page::email_setup(const Glib::RefPtr<Gtk::Builder>& _ui_builde
 						else
 						{
 							this->email_future = std::move(std::async(std::launch::async, [this] () {
-								model::invoice invoice_model{MINTBILL_DB_PATH,
-											     this->database_password};
+								model::invoice invoice_model{app::paths::database()};
 								data::email data{invoice_model.prepare_for_email(
 										 this->invoices_selected)};
 								feature::email email;
@@ -464,7 +446,7 @@ bool gui::invoice_page::print_setup(const Glib::RefPtr<Gtk::Builder>& _ui_builde
 		else
 		{
 			success = this->print_alert.connect([this, _main_window] (const int& response) {
-				model::invoice invoice_model{MINTBILL_DB_PATH, this->database_password};
+				model::invoice invoice_model{app::paths::database()};
 				switch (response)
 				{
 					case GTK_RESPONSE_YES:
@@ -1318,7 +1300,7 @@ void gui::invoice_page::populate(const std::string& _business_name)
         {
 		this->business_name.clear();
 		this->business_name = _business_name;
-		model::invoice invoice_model{MINTBILL_DB_PATH, this->database_password};
+		model::invoice invoice_model{app::paths::database()};
 		std::vector<std::any> db_invoices = invoice_model.load(_business_name);
 		std::vector<data::pdf_invoice> pdf_invoices;
 		std::transform(db_invoices.cbegin(),

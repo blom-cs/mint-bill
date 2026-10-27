@@ -1,5 +1,5 @@
 # Features Module  
-**High-Level Services: Email, PDF Generation, Secure Passwords**
+**High-Level Services: Email and PDF Generation**
 
 ---
 
@@ -9,11 +9,10 @@ The `features/` module provides higher-level application services that sit above
 These features encapsulate reusable business logic, external integrations, and complex workflows such as:
 
 - **PDF generation** (Invoices & Statements)  
-- **SMTP email delivery** (with attachments & multi-part messages)  
-- **Secure credential management** (GNOME Secret Service)
+- **SMTP email delivery** (with attachments & multi-part messages)
 
 Each feature is implemented as a standalone component with a clean public interface and minimal external coupling.  
-This design allows the GUI to trigger functionality without knowing how PDF rendering, MIME assembly, SMTP communication, or secret storage actually works.
+This design allows the GUI to trigger functionality without knowing how PDF rendering, MIME assembly, or SMTP communication actually works.
 
 ---
 
@@ -25,7 +24,6 @@ features
 │   ├── app_features.h
 │   ├── email.h
 │   ├── invoice_pdf.h
-│   ├── password_manager.h
 │   └── statement_pdf.h
 ├── mocks
 │   ├── include
@@ -34,7 +32,6 @@ features
 ├── source
 │   ├── email.cpp
 │   ├── invoice_pdf.cpp
-│   ├── password_manager.cpp
 │   └── statement_pdf.cpp
 └── tests
     ├── email_test.cpp
@@ -42,7 +39,6 @@ features
     ├── generate_statement_pdf_test.cpp
     ├── include
     │   └── generate_pdf.h
-    ├── password_manager_test.cpp
     └── source
         └── generate_pdf.cpp
 ---
@@ -127,22 +123,6 @@ Also returns a **binary PDF string**.
 
 ---
 
-## 4. Password Manager (`feature::password_manager`)
-Secure credential storage via **libsecret**.
-
-### Responsibilities
-- Stores passwords in encrypted GNOME Secret Service  
-- Retrieves them using schema attributes  
-- Validates ID ranges  
-- Throws on invalid construction  
-- Used at application startup to unlock the encrypted database  
-
-### Schema Fields
-- `"number"` → integer key for the stored secret  
-- `"even"` → boolean attribute (used for lookup symmetry)
-
----
-
 # Architectural Purpose
 
 The `features/` module:
@@ -151,7 +131,6 @@ The `features/` module:
 - Implements all real-world side effects:
   - PDF rendering  
   - Email transmission  
-  - Secret-service integration  
 - Keeps GUI code clean, so the GUI only orchestrates high-level actions  
 - Ensures that business logic is testable and decoupled  
 
@@ -163,7 +142,5 @@ std::string bytes = pdf.generate(pdf_data);
 
 feature::email email;
 email.send(email_data);
-
-feature::password_manager pm("org.mint-bill.password");
-std::string password = pm.lookup_password(0);
+```
 

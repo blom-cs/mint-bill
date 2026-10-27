@@ -1,352 +1,225 @@
 /*******************************************************************************
- * @file    sqlite_test.cpp
- * @brief   Unit tests for the SQLite/SQLCipher database wrapper and helpers.
- *
- * @details This test file verifies the behavior of the encrypted SQLite wrapper
- *          (storage::database::sqlite) and its supporting SQL operation
- *          helper (storage::database::part::sql_operations).
- *
- *          The following aspects are validated:
- *
- *            - Correct construction and error handling:
- *                • Throwing on invalid database paths or passwords.
- *                • Ensuring encrypted database access via SQLCipher.
- *
- *            - Transaction handling:
- *                • Rejecting empty transaction queries.
- *                • Successfully executing BEGIN/COMMIT sequences.
- *
- *            - Parameterized INSERT/UPDATE operations (usert):
- *                • Rejecting empty SQL strings and empty parameter lists.
- *                • Detecting mismatched parameter counts.
- *                • Handling execution failures when parameters are invalid.
- *                • Successfully inserting/updating rows with valid parameters.
- *
- *            - SELECT query behavior:
- *                • Handling empty queries and/or empty parameter lists safely.
- *                • Returning empty result sets in error/invalid-parameter cases.
- *                • Returning non-empty rows for valid queries and parameters.
- *                • Exercising column conversion for INTEGER, REAL, TEXT, and
- *                  BLOB-like data through the variant-based row representation.
- *
- *            - sql_operations helper:
- *                • Preparing SQL statements on construction and throwing on
- *                  invalid input (null connection, empty SQL, syntax errors).
- *                • Binding parameter vectors to positional placeholders and
- *                  catching mismatched counts.
- *                • Executing single-step (non-SELECT) statements.
- *                • Executing multi-step (SELECT) statements and collecting
- *                  rows into storage::database::part::rows.
- *
- *          Together, these tests provide regression coverage for the database
- *          abstraction layer, ensuring robust parameter binding, execution, and
- *          error handling around the SQLCipher-backed storage engine.
+ * @file sqlite_test.cpp
+ * @brief Tests for a plain Turso database: open, bind, and concurrent writes.
  ******************************************************************************/
 #include "CppUTest/TestHarness.h"
-#include "CppUTestExt/MockSupport.h"
 
-
+#include <atomic>
+#include <filesystem>
+#include <sqlite.h>
 #include <string>
-#include <iostream>
-#include <sstream>
-#include <variant>
-#include <string>
-#include <iomanip>
-#include <cstddef>
+#include <thread>
+#include <unistd.h>
 #include <vector>
 #include <errors.h>
-#include <sqlite.h>
-extern "C"
-{
 
+
+namespace {
+std::string temporary_database()
+{
+	static int sequence{0};
+	return "/tmp/mint-bill-turso-" + std::to_string(::getpid()) + "-" + std::to_string(++sequence) + ".db";
 }
 
-static std::vector<storage::database::param_values> good_params = {
-	std::string("test"),
-	std::string("odn@gmail.com"),
-	std::string("123456789"),
-	std::string("Geelsterd 8"),
-	std::string("12345"),
-	std::string("George")
-};
+void remove_database(const std::string& path)
+{
+	std::filesystem::remove(path);
+	std::filesystem::remove(path + "-wal");
+	std::filesystem::remove(path + "-shm");
+	std::filesystem::remove(path + "-log");
+}
 
-static std::string syntax_error_sql_query{R"SQL(
-	INSERT INTO admin (business_id, bank_name, branch_code, account_number, app_password, client_message)
-	VALUES (?,?,?,?,?,?)
-	ON CONFLICT(business_id) UPDATE SET
-		bank_name=excluded.bank_name, branch_code=excluded.branch_code,
-		account_number=excluded.account_number, app_password=excluded.app_password;
-	)SQL"};
+long long integer_at(const storage::database::part::rows& rows, std::size_t row, std::size_t column)
+{
+	return static_cast<long long> (std::get<sqlite3_int64> (rows.at(row).at(column)));
+}
+}
 
-static std::string good_sql_query{R"SQL(
-	INSERT INTO business_details (business_name, email_address, contact_number, street, area_code, town_name)
-	VALUES (?,?,?,?,?,?)
-	ON CONFLICT(email_address) DO UPDATE SET
-		business_name=excluded.business_name, contact_number=excluded.contact_number,
-		street=excluded.street, area_code=excluded.area_code, town_name=excluded.town_name;
-	)SQL"};
-
-static std::string good_sql_query_blob_and_real_data{R"SQL(
-		INSERT INTO labor (labor_id, quantity, description, amount, invoice_id)
-		VALUES (?,?,?,?,?)
-		ON CONFLICT(labor_id) DO UPDATE SET
-			quantity=excluded.quantity, description=excluded.description,
-			amount=excluded.amount, invoice_id=excluded.invoice_id;
-		)SQL"};
-
-
-
-/**********************************TEST LIST************************************
- * 1) Open connection to a SQLite3 database. (Done)
- * 2) Close the connection to a SQLite3 database. (Done)
- * 3) Execute any SQL queries. (Done)
- * 4) Ensure that the database is encrypted. (Done)
- * 5) Ensure database connection can handle multiple threads. (Done)
- * 6) Ensure transaction compatibility.
- ******************************************************************************/
 TEST_GROUP(sqlite_test)
 {
-	const std::string db_file{"../storage/tests/sql_wrapper_test.db"};
-	const std::string db_password{"123456789"};
-        storage::database::sqlite db{db_file, db_password};
+	std::string path;
 	void setup()
 	{
+		path = temporary_database();
+		remove_database(path);
 	}
 
 	void teardown()
 	{
+		remove_database(path);
 	}
 };
 
-TEST(sqlite_test, bad_construction_throws_type)
+TEST(sqlite_test, empty_path_throws)
 {
-	const std::string bad_db_password{"1234567890"};
-	CHECK_THROWS(app::errors, storage::database::sqlite("../test.db", ""));
-	CHECK_THROWS(app::errors, storage::database::sqlite("", "1234"));
-	CHECK_THROWS(app::errors, storage::database::sqlite("../test.db", db_password));
-	CHECK_THROWS(app::errors, storage::database::sqlite(db_file, bad_db_password));
+	CHECK_THROWS(app::errors, storage::database::sqlite(""));
 }
 
-TEST(sqlite_test, transaction_capability_empty_sql_query)
+TEST(sqlite_test, missing_directory_throws)
 {
-	CHECK_EQUAL(false, db.transaction(""));
+	CHECK_THROWS(app::errors, storage::database::sqlite("/no/such/mint-bill-dir/plain.db"));
 }
 
-TEST(sqlite_test, transaction_capability_begin_query)
+TEST(sqlite_test, opens_in_mvcc_mode)
 {
-	CHECK_EQUAL(true, db.transaction("BEGIN IMMEDIATE;"));
-	CHECK_EQUAL(true, db.transaction("COMMIT;"));
+	storage::database::sqlite db{path};
+	storage::database::part::rows rows{db.select("PRAGMA journal_mode;")};
+
+	CHECK_EQUAL(1, rows.size());
+	STRCMP_EQUAL("mvcc", std::get<std::string> (rows.at(0).at(0)).c_str());
 }
 
-TEST(sqlite_test, usert_empty_sql_query_parameter)
+TEST(sqlite_test, empty_statement_is_rejected)
 {
-	std::string bad_sql_query{""};
+	storage::database::sqlite db{path};
 
-	CHECK_EQUAL(false, db.usert(bad_sql_query, good_params));
+	CHECK_FALSE(db.transaction(""));
+	CHECK_FALSE(db.usert("", {std::string{"x"}}));
+	CHECK_TRUE(db.select("").empty());
+	CHECK_TRUE(db.select("SELECT 1", {}).empty());
 }
 
-TEST(sqlite_test, usert_empty_argument)
+TEST(sqlite_test, round_trips_bound_values)
 {
-	std::vector<storage::database::param_values> bad_params;
+	storage::database::sqlite db{path};
+	CHECK_TRUE(db.transaction("CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT, amount REAL, note BLOB);"));
 
-	CHECK_EQUAL(false, db.usert(good_sql_query, bad_params));
+	storage::database::blob note{std::byte{0x01}, std::byte{0x02}, std::byte{0xff}};
+	CHECK_TRUE(db.usert(
+		"INSERT INTO item (name, amount, note) VALUES (?, ?, ?);",
+		{std::string{"bolt"}, 1.5, note}));
+
+	storage::database::part::rows rows{db.select(
+		"SELECT name, amount, note FROM item WHERE id = ?;",
+		{sqlite3_int64{1}})};
+
+	CHECK_EQUAL(1, rows.size());
+	STRCMP_EQUAL("bolt", std::get<std::string> (rows.at(0).at(0)).c_str());
+	DOUBLES_EQUAL(1.5, std::get<double> (rows.at(0).at(1)), 0.001);
+	CHECK_EQUAL(note.size(), std::get<storage::database::blob> (rows.at(0).at(2)).size());
+	CHECK_EQUAL(0, std::memcmp(note.data(), std::get<storage::database::blob> (rows.at(0).at(2)).data(), note.size()));
 }
 
-TEST(sqlite_test, usert_wrong_number_of_sql_parameters)
+TEST(sqlite_test, wrong_parameter_count_does_not_write)
 {
-	std::vector<storage::database::param_values> bad_params = {
-		std::string("FedBank"),
-		std::string("001"),
-		std::string("123456789"),
-		std::string("s3cr3t!"),
-		std::string("Thanks for your business")
-	};
+	storage::database::sqlite db{path};
+	CHECK_TRUE(db.transaction("CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT);"));
 
-	CHECK_EQUAL(false, db.usert(good_sql_query, bad_params));
+	CHECK_FALSE(db.usert("INSERT INTO item (name) VALUES (?);", {std::string{"a"}, std::string{"b"}}));
+	CHECK_TRUE(db.select("SELECT name FROM item;").empty());
 }
 
-TEST(sqlite_test, usert_unable_to_step_and_execute_sql_query)
+TEST(sqlite_test, failed_work_rolls_back)
 {
-	std::nullptr_t business_name;
-	std::vector<storage::database::param_values> bad_params = {
-		1LL,
-		business_name,
-		std::string("001"),
-		std::string("123456789"),
-		std::string("s3cr3t!"),
-		std::string("Thanks for your business")
-	};
+	storage::database::sqlite db{path};
+	CHECK_TRUE(db.transaction("CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT);"));
 
-	CHECK_EQUAL(false, db.usert(good_sql_query, bad_params));
+	CHECK_FALSE(db.concurrently([&db] () {
+		CHECK_TRUE(db.usert("INSERT INTO item (name) VALUES (?);", {std::string{"gone"}}));
+		return false;
+	}));
+
+	CHECK_TRUE(db.select("SELECT name FROM item;").empty());
 }
 
-TEST(sqlite_test, usert_good_parameters)
+TEST(sqlite_test, second_connection_sees_a_committed_row)
 {
-	CHECK_EQUAL(true, db.usert(good_sql_query, good_params));
+	storage::database::sqlite db{path};
+	CHECK_TRUE(db.transaction("CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT);"));
+	CHECK_TRUE(db.usert("INSERT INTO item (name) VALUES (?);", {std::string{"ada"}}));
+
+	storage::database::sqlite other{path};
+	storage::database::part::rows rows{other.select("SELECT name FROM item;")};
+
+	CHECK_EQUAL(1, rows.size());
+	STRCMP_EQUAL("ada", std::get<std::string> (rows.at(0).at(0)).c_str());
 }
 
-TEST(sqlite_test, select_with_empty_params)
+TEST(sqlite_test, concurrent_increments_do_not_lose_updates)
 {
-	std::vector<storage::database::param_values> params;
-	storage::database::part::rows rows{db.select(R"SQL(
-		SELECT bank_name FROM ADMIN WHERE business_id = ?;
-		)SQL", params)};
-
-	CHECK_EQUAL(true, rows.empty());
-}
-
-TEST(sqlite_test, select_empty_query)
-{
-	std::vector<storage::database::param_values> params = {
-		1LL
-	};
-	storage::database::part::rows rows{db.select("", params)};
-
-	CHECK_EQUAL(true, rows.empty());
-}
-
-TEST(sqlite_test, select_fail_to_bind_parameters)
-{
-	std::vector<storage::database::param_values> params = {
-		1LL,
-		1LL
-	};
-	storage::database::part::rows rows{db.select(R"SQL(
-		SELECT bank_name FROM ADMIN where business_id = ?
-		)SQL", params)};
-
-	CHECK_EQUAL(true, rows.empty());
-}
-
-TEST(sqlite_test, select_empty_sql_query_statement)
-{
-	std::vector<storage::database::param_values> params = {
-		 sqlite3_int64{1}
-	};
-	storage::database::part::rows rows{db.select("", params)};
-
-	CHECK_EQUAL(true, rows.empty());
-}
-
-TEST(sqlite_test, select_no_params_and_query)
-{
-	storage::database::part::rows rows{db.select("")};
-
-	CHECK_EQUAL(true, rows.empty());
-}
-
-TEST(sqlite_test, select_no_params)
-{
-	storage::database::part::rows rows{db.select(R"SQL(
-		SELECT business_name FROM business_details;
-	)SQL")};
-
-	CHECK_EQUAL(false, rows.empty());
-}
-
-TEST(sqlite_test, select_with_good_parameters)
-{
-	std::vector<storage::database::param_values> params = {
-		1LL
-	};
-	storage::database::part::rows rows{db.select(R"SQL(
-		  SELECT business_name
-		  FROM business_details
-		  WHERE business_id = ?
-		)SQL", params)};
-
-	CHECK_EQUAL(false, rows.empty());
-}
-
-TEST(sqlite_test, select_blob_data)
-{
-	std::vector<storage::database::param_values> params = {
-		1LL
-	};
-	(void)db.transaction("BEGIN IMMEDIATE;");
-	storage::database::part::rows rows{db.select(R"SQL(
-		SELECT quantity, description, amount
-		FROM labor WHERE labor_id = ?
-		)SQL", params)};
-	(void)db.transaction("COMMIT;");
-
-	CHECK_EQUAL(true, rows.empty());
-}
-
-
-
-
-
-
-
-/**********************************TEST LIST************************************
- * 1) Prepare the sql statement on creation. (Done)
- * 2) Bind parameters to the positional arguments. (Done)
- * 3) execute the sql statements. (Done)
- ******************************************************************************/
-TEST_GROUP(sql_operations_test)
-{
-	sqlite3 *database{nullptr};
-	std::string pass{"123456789"};
-	void setup()
+	constexpr int writers{8};
 	{
-		sqlite3_open_v2("../storage/tests/sql_wrapper_test.db", &database, (SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX), nullptr);
-		sqlite3_key(database, pass.data(), static_cast<int> (pass.size()));
+		storage::database::sqlite db{path};
+		CHECK_TRUE(db.transaction("CREATE TABLE counter (id INTEGER PRIMARY KEY, val INTEGER);"));
+		CHECK_TRUE(db.usert("INSERT INTO counter (id, val) VALUES (?, ?);", {sqlite3_int64{1}, sqlite3_int64{0}}));
 	}
 
-	void teardown()
+	std::atomic<int> arrived{0};
+	std::atomic<int> wins{0};
+	std::vector<std::thread> threads;
+	threads.reserve(writers);
+	for (int index{0}; index < writers; ++index)
 	{
-		sqlite3_close_v2(database);
-		database = nullptr;
+		threads.emplace_back([&] () {
+			arrived.fetch_add(1);
+			while (arrived.load() < writers)
+			{
+				std::this_thread::yield();
+			}
+
+			storage::database::sqlite db{path};
+			bool saved{db.concurrently([&db] () {
+				storage::database::part::rows rows{db.select(
+					"SELECT val FROM counter WHERE id = ?;",
+					{sqlite3_int64{1}})};
+				if (rows.empty() == true)
+				{
+					return false;
+				}
+				sqlite3_int64 next{static_cast<sqlite3_int64> (integer_at(rows, 0, 0) + 1)};
+				return db.usert(
+					"UPDATE counter SET val = ? WHERE id = ?;",
+					{next, sqlite3_int64{1}});
+			}, 64)};
+			if (saved == true)
+			{
+				wins.fetch_add(1);
+			}
+		});
 	}
-};
+	for (std::thread& thread : threads)
+	{
+		thread.join();
+	}
 
-TEST(sql_operations_test, prepare_sql_stmt_construction)
-{
-	CHECK_THROWS(app::errors, storage::database::part::sql_operations(nullptr, good_sql_query));
-	CHECK_THROWS(app::errors, storage::database::part::sql_operations(database, ""));
-	CHECK_THROWS(app::errors, storage::database::part::sql_operations(database, syntax_error_sql_query));
+	storage::database::sqlite db{path};
+	storage::database::part::rows rows{db.select("SELECT val FROM counter WHERE id = ?;", {sqlite3_int64{1}})};
+	CHECK_EQUAL(writers, wins.load());
+	CHECK_EQUAL(writers, integer_at(rows, 0, 0));
 }
 
-TEST(sql_operations_test, prepare_sql_stmt_without_assigned_values)
+TEST(sqlite_test, concurrent_inserts_of_different_rows_all_commit)
 {
-	std::vector<storage::database::param_values> params;
-	storage::database::part::sql_operations operations{database, good_sql_query};
+	constexpr int writers{8};
+	{
+		storage::database::sqlite db{path};
+		CHECK_TRUE(db.transaction("CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT);"));
+	}
 
-	CHECK_EQUAL(false, operations.bind_params(params));
-}
+	std::atomic<int> wins{0};
+	std::vector<std::thread> threads;
+	threads.reserve(writers);
+	for (int index{0}; index < writers; ++index)
+	{
+		threads.emplace_back([this, index, &wins] () {
+			storage::database::sqlite db{path};
+			if (db.concurrently([index, &db] () {
+				return db.usert(
+					"INSERT INTO item (id, name) VALUES (?, ?);",
+					{sqlite3_int64{index + 1}, std::string{"row"}});
+			}) == true)
+			{
+				wins.fetch_add(1);
+			}
+		});
+	}
+	for (std::thread& thread : threads)
+	{
+		thread.join();
+	}
 
-TEST(sql_operations_test, prepare_sql_statement_and_fail_to_execute_sql_query)
-{
-	storage::database::part::sql_operations operations{database, good_sql_query};
-
-	CHECK_EQUAL(false, operations.single_execute());
-}
-
-TEST(sql_operations_test, prepare_sql_stmt_with_assigned_values)
-{
-	storage::database::part::sql_operations operations{database, good_sql_query};
-
-	CHECK_EQUAL(true, operations.bind_params(good_params));
-}
-
-TEST(sql_operations_test, prepare_sql_statement_and_execute_sql_query)
-{
-	storage::database::part::sql_operations operations{database, good_sql_query};
-	(void) operations.bind_params(good_params);
-
-	CHECK_EQUAL(true, operations.single_execute());
-}
-
-TEST(sql_operations_test, select_good_parameter)
-{
-	std::vector<storage::database::param_values> params = {
-		1LL
-	};
-	std::string sql_query{R"SQL(SELECT business_name FROM business_details WHERE business_id = ?)SQL"};
-	storage::database::part::sql_operations operations{database, sql_query};
-	(void) operations.bind_params(params);
-	storage::database::part::rows rows{operations.multi_execute()};
-
-	CHECK_EQUAL(false, rows.empty());
+	storage::database::sqlite db{path};
+	storage::database::part::rows rows{db.select("SELECT COUNT(*) FROM item;")};
+	CHECK_EQUAL(writers, wins.load());
+	CHECK_EQUAL(writers, integer_at(rows, 0, 0));
 }

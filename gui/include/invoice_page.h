@@ -110,7 +110,6 @@ namespace gui {
 
 			[[nodiscard]] virtual bool create(const Glib::RefPtr<Gtk::Builder>&,
 							  const std::shared_ptr<Gtk::Window>&) override;
-			[[nodiscard]] virtual bool set_database_password(const std::string&) override;
 			[[nodiscard]] virtual bool search(const std::string&) override;
 			[[nodiscard]] virtual bool print() override;
 			[[nodiscard]] virtual bool email() override;
@@ -178,7 +177,6 @@ namespace gui {
 										     const long long&);
 
                 private: // Member features
-			std::string database_password{""};
                         int number_of_pages{0};
                         bool email_success{false};
 			std::future<bool> email_future;

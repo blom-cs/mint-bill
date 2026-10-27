@@ -58,8 +58,7 @@ function install_develop()
         dnf_packages=(python3 lcov cloc cppcheck git texinfo help2man make cmake dh-autoreconf autoconf
                       automake binutils bison valgrind check gcovr gcc gcc-c++ glibc-devel curl gtk4
                       gtk4-devel gtkmm4.0-devel cairomm cairomm-devel libcurl libcurl-devel poppler-cpp-devel
-                      debuginfo-install gtkmm30 glibmm24 xorg-x11-server-Xvfb sqlcipher sqlcipher-devel
-		      libsecret libsecret-devel)
+                      debuginfo-install gtkmm30 glibmm24 xorg-x11-server-Xvfb)
 
         if [[ ! -z $DNF ]];
         then

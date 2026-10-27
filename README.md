@@ -12,17 +12,40 @@ system should be stored in the docs directory under their respective child direc
 
 
 ## Project Tool
-The project tool used to set up the development for the developer is called `mintbill.sh`,                       
-located in the **scripts** directory found in the project base directory.                       
-- For a description of the tool and its capabilities, run `./scripts/mintbill.sh -h`.        
+The project tool used to set up the development for the developer is called `mint-bill.sh`,
+located in the **scripts** directory found in the project base directory.
+- For a description of the tool and its capabilities, run `./scripts/mint-bill.sh -h`.
 
 
 ## Getting Ready For Development
-Follow the below steps to set up your system for development for this project.          
-**NOTE: Currently, the project supports development on Fedora only** 
-- To install all required packages for code development: `./scripts/mintbill.sh -i develop` 
-- To install all required tools for GUI design: `./scripts/mintbill.sh -i design`
-- To install all required tools for analysis: `./scripts/mintbill.sh -i analysis`
+Follow the below steps to set up your system for development for this project.
+**NOTE: Currently, the project supports development on Fedora only**
+- To install all required packages for code development: `./scripts/mint-bill.sh -i develop`
+- To install all required tools for GUI design: `./scripts/mint-bill.sh -i design`
+- To install all required tools for analysis: `./scripts/mint-bill.sh -i analysis`
+
+The database library is Turso's sqlite3-compatible C API, crate `turso_sqlite3`. Fedora does not package it, and `install.sh` does not install it. Build the static library with Rust and leave it where CMake expects it:
+
+```
+git clone https://github.com/tursodatabase/turso.git /tmp/turso-src
+cd /tmp/turso-src && cargo build -p turso_sqlite3 --release
+```
+
+CMake uses `/tmp/turso-src/target/release/libturso_sqlite3.a`. Pass `-DTURSO_LIBRARY=` to use another path. The header is already vendored at `third_party/turso/include/sqlite3.h`. The Turso command-line tool is not required. This is not the libSQL C SDK (`libsql.h`). The database file is a Turso file.
+
+
+## Deployment
+Production is two offline Fedora RPM payloads unpacked into the user's home
+directory (no root, no `/usr`).
+
+- Build the bundle: `./scripts/mint-bill.sh --build rpm`
+- Version: `PROJECT_VERSION_NUM` in `scripts/build.sh`. The RPM, the CMake project, and the bundle use that value.
+- Directory: `build/rpm/mint-bill-v<version>/` (both RPMs, runtime dependency RPMs, and `install.sh`)
+- Archive: `build/rpm/mint-bill-v<version>.tar.gz`
+
+On the office PC, unpack the archive and run `./install.sh` to print the usage help. `./install.sh --install` stops the old user services, removes the old program files, installs `mint-bill-tme` and `mint-bill-tce`, and starts both programs. A live Turso database is left in place. `./install.sh --uninstall` removes the program files, user services, data directories, and backup directories.
+
+TME and TCE are separate processes, data directories, databases, and systemd user services.
 
 
 ## Rules For Development

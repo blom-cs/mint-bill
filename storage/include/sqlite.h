@@ -1,42 +1,23 @@
 /*******************************************************************************
  * @file    sqlite.h
- * @brief   SQLite/SQLCipher database abstraction layer.
+ * @brief   Plain Turso database access for one connection.
  *
- * @details This header defines the interfaces and supporting types used for
- *          interacting with an encrypted SQLCipher-backed SQLite database.
- *
- *          Key features:
- *            - Provides storage::database::sqlite, a high-level wrapper around
- *              SQLCipher that manages encrypted database connections and
- *              exposes simple APIs for transactions, parameterized inserts/
- *              updates, and SELECT queries.
- *
- *            - Defines storage::database::param_values and related aliases,
- *              representing the full set of SQLite storage classes through
- *              std::variant (NULL, INTEGER, REAL, TEXT, BLOB).
- *
- *            - Introduces storage::database::part::sql_operations, a helper
- *              responsible for preparing SQL statements, binding parameters,
- *              executing queries, and collecting rows into structured forms.
- *
- *            - Includes binder, a std::variant visitor that binds C++ values
- *              to SQLite prepared-statement parameters safely and consistently.
- *
- *          These abstractions decouple the rest of the system from direct
- *          SQLite API usage, promote consistent error handling, and provide a
- *          clean interface for all database interactions.
+ * Each sqlite object is one connection. Opening the same file again in this
+ * process shares Turso's database, so other threads can read and write at the
+ * same time. Write work goes through concurrently(), which uses
+ * BEGIN CONCURRENT and retries a row conflict.
  ******************************************************************************/
 #ifndef _SQLITE_H_
 #define _SQLITE_H_
+#include <functional>
 #include <string>
 #include <vector>
 #include <variant>
-#include <sqlcipher/sqlite3.h>
+#include <sqlite3.h>
 
 
 namespace storage {
 namespace database {
-// Covers all 5 SQLite storage classes: NULL, INTEGER, REAL, TEXT, BLOB
 using blob = std::vector<std::byte>;
 using param_values = std::variant<std::nullptr_t, sqlite3_int64, double, std::string, blob>;
 using sql_parameters = std::vector<param_values>;
@@ -46,10 +27,11 @@ using column_value = param_values;
 using row = std::vector<column_value>;
 using rows = std::vector<row>;
 }
+
 class sqlite {
 public:
 	sqlite() = delete;
-	explicit sqlite(const std::string&, const std::string&);
+	explicit sqlite(const std::string&);
 	sqlite(const sqlite&) = delete;
 	sqlite(sqlite&&) = delete;
 	sqlite& operator= (const sqlite&) = delete;
@@ -60,9 +42,11 @@ public:
 	[[nodiscard]] virtual bool usert(const std::string&, const std::vector<param_values>&);
 	[[nodiscard]] virtual part::rows select(const std::string&, const std::vector<param_values>&);
 	[[nodiscard]] virtual part::rows select(const std::string&);
+	[[nodiscard]] virtual bool concurrently(const std::function<bool()>&, int attempts = 32);
 
 private:
 	sqlite3 *database{nullptr};
+	bool last_retryable{false};
 };
 
 namespace part
@@ -70,7 +54,7 @@ namespace part
 class sql_operations {
 public:
 	sql_operations() = delete;
-	explicit sql_operations(sqlite3*, const std::string&);
+	explicit sql_operations(sqlite3*, const std::string&, bool*);
 	sql_operations(const sql_operations&) = delete;
 	sql_operations(sql_operations&&) = delete;
 	sql_operations& operator= (const sql_operations&) = delete;
@@ -82,11 +66,12 @@ public:
 	[[nodiscard]] rows virtual multi_execute();
 
 private:
+	void note(int);
 	[[nodiscard]] row collect_row_data();
 	[[nodiscard]] column_value convert_column_value(const int&);
 
-private:
 	sqlite3_stmt *sql_stmt{nullptr};
+	bool *retryable{nullptr};
 };
 
 struct binder {

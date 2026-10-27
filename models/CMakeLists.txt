@@ -14,7 +14,7 @@
 #       - GTKMM
 #       - Poppler
 #       - Cairomm
-#       - libsecret
+#       - Turso (sqlite3.h under third_party/turso/include)
 #   • Makes model and serialization headers available to external modules via
 #     PUBLIC include paths.
 #
@@ -49,11 +49,11 @@ if(${FILES_IN_DIR} GREATER 0)
                 ${GTKMM_INCLUDE_DIRS}
                 ${POPPLER_INCLUDE_DIRS}
                 ${CAIROMM_INCLUDE_DIRS}
-		${LIBSECRET_INCLUDE_DIRS}
                 PUBLIC
                 ${CMAKE_SOURCE_DIR}/app/include
                 ${CMAKE_SOURCE_DIR}/data/include
                 ${CMAKE_SOURCE_DIR}/storage/include
+                ${CMAKE_SOURCE_DIR}/third_party/turso/include
                 ${CMAKE_SOURCE_DIR}/utility/include
                 ${CMAKE_SOURCE_DIR}/features/include
         )

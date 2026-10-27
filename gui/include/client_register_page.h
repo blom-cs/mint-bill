@@ -16,7 +16,6 @@
  *   - Load and display client data from the database.
  *   - Validate user input and extract UI values into a data::client object.
  *   - Present save-confirmation and error-alert dialogs.
- *   - Maintain the database password required for model operations.
  *
  * The class is intentionally non-copyable and non-movable to preserve unique
  * widget ownership and to prevent duplication of GTK state.
@@ -38,7 +37,6 @@ namespace gui {
                         ~client_register_page() override;
 
 			[[nodiscard]] virtual bool create(const Glib::RefPtr<Gtk::Builder>&) override;
-			[[nodiscard]] virtual bool set_database_password(const std::string&) override;
 			[[nodiscard]] virtual bool search(const std::string&) override;
 			[[nodiscard]] virtual bool save() override;
 
@@ -51,7 +49,6 @@ namespace gui {
                         data::client extract_page_entries();
 
                 private:
-			std::string database_password{""};
                         std::unique_ptr<Gtk::Entry> email{};
                         std::unique_ptr<Gtk::Entry> cellphone{};
                         std::unique_ptr<Gtk::Entry> vat_number{};
