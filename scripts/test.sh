@@ -101,6 +101,11 @@ function code_coverage()
 	local xvfb_pid=$!
 	export DISPLAY=:99
 	make -C $TEST_DIR -s gcov
+	local make_status=$?
+	if [[ $make_status -ne 0 ]]; then
+		kill $xvfb_pid
+		exit $make_status
+	fi
 	gcovr --exclude="^[^\/]+\/mocks\/?(?:[^\/]+\/?)*$" --exclude-throw-branches -r $prj_dir \
 		--html-nested $coverage_dir/coverage.html  --txt $coverage_dir/coverage.txt
 
@@ -138,7 +143,11 @@ function unit_test()
 	local xvfb_pid=$!
 	export DISPLAY=:99
 	make -C $TEST_DIR -s
+	local make_status=$?
 	kill $xvfb_pid
+	if [[ $make_status -ne 0 ]]; then
+		exit $make_status
+	fi
 
 	make -C $TEST_DIR -s clean
 }
