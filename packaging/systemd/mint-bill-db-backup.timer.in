@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly @APP_DISPLAY_NAME@ database backup
+
+[Timer]
+OnCalendar=Fri 18:00
+Persistent=true
+Unit=@APP_NAME@-db-backup.service
+
+[Install]
+WantedBy=timers.target

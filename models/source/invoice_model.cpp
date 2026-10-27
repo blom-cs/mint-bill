@@ -59,8 +59,8 @@
 
 
 
-model::invoice::invoice(const std::string& _database_file, const std::string& _database_password)
-	: database_file{_database_file}, database_password{_database_password} {}
+model::invoice::invoice(const std::string& _database_file)
+	: database_file{_database_file} {}
 
 model::invoice::~invoice() {}
 
@@ -74,7 +74,7 @@ std::vector<std::any> model::invoice::load(const std::string& _business_name) co
 	}
 	else
         {
-		storage::database::sqlite database{this->database_file, this->database_password};
+		storage::database::sqlite database{this->database_file};
 		serialize::admin admin_serialize{};
 		data::admin admin_data{
 			std::any_cast<data::admin>(
@@ -145,7 +145,7 @@ bool model::invoice::save(const std::any& _data) const
 	}
 	else
         {
-		storage::database::sqlite database{this->database_file, this->database_password};
+		storage::database::sqlite database{this->database_file};
 		storage::database::sql_parameters labor_delete_all_params{std::stoi(invoice_data.get_id())};
 
 		serialize::admin admin_serialize{};
@@ -198,97 +198,58 @@ bool model::invoice::save(const std::any& _data) const
 			invoice_data.get_grand_total()
 		};
 
-		if (database.transaction("BEGIN IMMEDIATE;") == false)
-		{
-			if (database.transaction("ROLLBACK;") == false)
+		success = database.concurrently([&] () {
+			if (database.usert(sql::query::statement_usert, statement_params) == false
+					|| database.usert(sql::query::labor_delete_all_for_invoice, labor_delete_all_params) == false
+					|| database.usert(sql::query::invoice_usert, invoice_params) == false)
 			{
-				syslog(LOG_CRIT, "INVOICE_MODEL: failed to rollback - "
+				syslog(LOG_CRIT, "INVOICE_MODEL: failed to save the invoice - "
 						 "filename %s, line number %d", __FILE__, __LINE__);
+				return false;
 			}
-		}
-		if (database.usert(sql::query::statement_usert, statement_params) == false)
-		{
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "INVOICE_MODEL: failed to rollback - "
-						"filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-		else if (database.usert(sql::query::labor_delete_all_for_invoice, labor_delete_all_params) == false)
-		{
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "INVOICE_MODEL: failed to rollback - "
-						"filename %s, line number %d", __FILE__, __LINE__);
-			}
-			return success;
-		}
-		else if (database.usert(sql::query::invoice_usert, invoice_params) == false)
-		{
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "INVOICE_MODEL: failed to rollback - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
 
-		serialize::labor labor_serialize{};
-		for (const data::column& column_data : invoice_data.get_description_column())
-		{
-			storage::database::sql_parameters description_params{
-				invoice_data.get_name(),
-				invoice_data.get_order_number(),
-				invoice_data.get_job_card_number(),
-				column_data.get_row_number(),
-				column_data.get_is_description(),
-				column_data.get_quantity(),
-				column_data.get_description(),
-				column_data.get_amount(),
-			};
-			if (database.usert(sql::query::labor_usert, description_params) == false)
+			for (const data::column& column_data : invoice_data.get_description_column())
 			{
-				if (database.transaction("ROLLBACK;") == false)
+				storage::database::sql_parameters description_params{
+					invoice_data.get_name(),
+					invoice_data.get_order_number(),
+					invoice_data.get_job_card_number(),
+					column_data.get_row_number(),
+					column_data.get_is_description(),
+					column_data.get_quantity(),
+					column_data.get_description(),
+					column_data.get_amount(),
+				};
+				if (database.usert(sql::query::labor_usert, description_params) == false)
 				{
-					syslog(LOG_CRIT, "INVOICE_MODEL: failed to rollback - "
+					syslog(LOG_CRIT, "INVOICE_MODEL: failed to save a description line - "
 							 "filename %s, line number %d", __FILE__, __LINE__);
+					return false;
 				}
 			}
-		}
 
-		for (const data::column& column_data : invoice_data.get_material_column())
-		{
-			storage::database::sql_parameters material_params{
-				invoice_data.get_name(),
-				invoice_data.get_order_number(),
-				invoice_data.get_job_card_number(),
-				column_data.get_row_number(),
-				column_data.get_is_description(),
-				column_data.get_quantity(),
-				column_data.get_description(),
-				column_data.get_amount(),
-			};
-			if (database.usert(sql::query::labor_usert, material_params) == false)
+			for (const data::column& column_data : invoice_data.get_material_column())
 			{
-				if (database.transaction("ROLLBACK;") == false)
+				storage::database::sql_parameters material_params{
+					invoice_data.get_name(),
+					invoice_data.get_order_number(),
+					invoice_data.get_job_card_number(),
+					column_data.get_row_number(),
+					column_data.get_is_description(),
+					column_data.get_quantity(),
+					column_data.get_description(),
+					column_data.get_amount(),
+				};
+				if (database.usert(sql::query::labor_usert, material_params) == false)
 				{
-					syslog(LOG_CRIT, "INVOICE_MODEL: failed to rollback - "
+					syslog(LOG_CRIT, "INVOICE_MODEL: failed to save a material line - "
 							 "filename %s, line number %d", __FILE__, __LINE__);
+					return false;
 				}
 			}
-		}
 
-		if (database.transaction("COMMIT;") == false)
-		{
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "INVOICE_MODEL: failed to rollback - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-		else
-		{
-			success = true;
-		}
+			return true;
+		});
         }
 
         return success;

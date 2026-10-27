@@ -53,13 +53,21 @@ CPPUTEST_EXE_FLAGS +=-c -v
 # CPPUTEST_EXE_FLAGS +=-sg "statement_page_column_view_test"
 
 CPPUTEST_CXXFLAGS += -DMINTBILL_DB_PATH=\"../storage/test/model_test.db\"
+CPPUTEST_CXXFLAGS += -DMINTBILL_UI_PATH=\"../gui/mint-bill.ui\"
+CPPUTEST_CXXFLAGS += -DMINTBILL_CSS_PATH=\"../gui/mint-bill.css\"
+CPPUTEST_CXXFLAGS += -DMINTBILL_EMAIL_TXT_PATH=\"../email.txt\"
+CPPUTEST_CXXFLAGS += -DMINTBILL_EMAIL_HTML_PATH=\"../email.html\"
+
+TURSO_LIBRARY ?= /tmp/turso-src/target/release/libturso_sqlite3.a
 
 CPPUTEST_CXXFLAGS +=-std=c++23 
-CPPUTEST_CXXFLAGS += $(shell pkg-config --cflags cairomm-1.16 gtkmm-4.0 poppler-cpp sqlcipher libsecret-1) -DSQLITE_HAS_CODEC
-CPPUTEST_CFLAGS += $(shell pkg-config --cflags poppler-cpp sqlcipher libsecret-1) -DSQLITE_HAS_CODEC
-CPPUTEST_CFLAGS += $(shell curl-config --cflags)  
-CPPUTEST_LDFLAGS += $(shell pkg-config --libs cairomm-1.16 gtkmm-4.0 poppler-cpp sqlcipher libsecret-1)
-CPPUTEST_LDFLAGS += $(shell curl-config --libs) 
+CPPUTEST_CXXFLAGS += $(shell pkg-config --cflags cairomm-1.16 gtkmm-4.0 poppler-cpp)
+CPPUTEST_CXXFLAGS += -I$(PROJECT_DIR)/third_party/turso/include
+CPPUTEST_CFLAGS += $(shell pkg-config --cflags poppler-cpp)
+CPPUTEST_CFLAGS += $(shell curl-config --cflags)
+CPPUTEST_LDFLAGS += $(shell pkg-config --libs cairomm-1.16 gtkmm-4.0 poppler-cpp)
+CPPUTEST_LDFLAGS += $(shell curl-config --libs)
+CPPUTEST_LDFLAGS += $(TURSO_LIBRARY) -ldl -lpthread -lm 
 
 
 SRC_DIRS :=\

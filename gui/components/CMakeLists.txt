@@ -54,6 +54,7 @@ if(${FILES_IN_DIR} GREATER 0)
                 ${CMAKE_SOURCE_DIR}/app/include
                 ${CMAKE_SOURCE_DIR}/data/include
                 ${CMAKE_SOURCE_DIR}/storage/include
+                ${CMAKE_SOURCE_DIR}/third_party/turso/include
                 ${CMAKE_SOURCE_DIR}/features/include
                 ${CMAKE_SOURCE_DIR}/utility/include
                 ${PROJECT_SOURCE_DIR}/invoice_page/include

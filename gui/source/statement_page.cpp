@@ -48,7 +48,7 @@
 #include <email.h>
 #include <algorithm>
 #include <printer.h>
-#include <config.h>
+#include <paths.h>
 #include <invoice_model.h>
 
 
@@ -131,23 +131,6 @@ bool gui::statement_page::create(const Glib::RefPtr<Gtk::Builder>& _ui_builder,
         }
 
         return true;
-}
-
-bool gui::statement_page::set_database_password(const std::string& _database_password)
-{
-	bool success{false};
-	if (_database_password.empty() == true)
-	{
-                syslog(LOG_CRIT, "STATEMENT_PAGE: database password is empty - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		success = true;
-		this->database_password = _database_password;
-	}
-
-	return success;
 }
 
 bool gui::statement_page::search(const std::string& _keyword)
@@ -279,8 +262,7 @@ bool gui::statement_page::email_setup(const Glib::RefPtr<Gtk::Builder>& _ui_buil
 						else
 						{
 							this->email_future = std::move(std::async(std::launch::async, [this] () {
-								model::statement statement_model{MINTBILL_DB_PATH,
-												 this->database_password};
+								model::statement statement_model{app::paths::database()};
 								data::email data{statement_model.prepare_for_email(this->documents)};
 								feature::email email;
 								bool result{email.send(data)};
@@ -340,8 +322,7 @@ bool gui::statement_page::print_setup(const Glib::RefPtr<Gtk::Builder>& _ui_buil
 						}
 						else
 						{
-							model::statement statement_model{MINTBILL_DB_PATH,
-											 this->database_password};
+							model::statement statement_model{app::paths::database()};
 							std::vector<std::string> data{statement_model.prepare_for_print(this->documents)};
 							gui::part::printer printer{"statement"};
 							if (printer.print(data, _main_window) == false)
@@ -401,7 +382,7 @@ bool gui::statement_page::save_setup(const Glib::RefPtr<Gtk::Builder>& _ui_build
 						}
 						else
 						{
-							model::statement statement_model{MINTBILL_DB_PATH, this->database_password};
+							model::statement statement_model{app::paths::database()};
 							data::statement statement_data{this->selected_pdf_statement.get_statement()};
 							if (statement_model.save(statement_data) == false)
 							{
@@ -410,8 +391,7 @@ bool gui::statement_page::save_setup(const Glib::RefPtr<Gtk::Builder>& _ui_build
 							}
 							else
 							{
-								model::invoice invoice_model{MINTBILL_DB_PATH,
-											     this->database_password};
+								model::invoice invoice_model{app::paths::database()};
 								for (const std::any& data : this->invoice_data)
 								{
 									data::invoice invoice{std::any_cast<data::invoice> (data)};
@@ -456,7 +436,7 @@ bool gui::statement_page::save_setup(const Glib::RefPtr<Gtk::Builder>& _ui_build
 bool gui::statement_page::populate(const std::string& _business_name)
 {
 	std::vector<std::any> pdf_statements{};
-	model::statement statement_model{MINTBILL_DB_PATH, this->database_password};
+	model::statement statement_model{app::paths::database()};
 	for (const std::any& data : statement_model.load(_business_name))
 	{
 		data::pdf_statement pdf_statement{std::any_cast<data::pdf_statement>(data)};

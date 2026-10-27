@@ -159,7 +159,7 @@ function help()
         $ECHO "${INFO_COLOR}\t-b, -b=, --build, --build=SUPPORTED_BUILD${END_COLOR}"
         $ECHO "${INFO_COLOR}\t\tSUPPORTED_BUILD:${END_COLOR}"
         $ECHO "${INFO_COLOR}\t\t\t[HOST], compiles for the host computer you are developing on (e.g. Linux PC or Laptop)${END_COLOR}"
-        $ECHO "${INFO_COLOR}\t\t\t[DEPLOY], packages the binary file for production.\n\r${END_COLOR}"
+        $ECHO "${INFO_COLOR}\t\t\t[RPM], [DEPLOY], builds an offline Fedora RPM (TENANT=tme|tce).\n\r${END_COLOR}"
         $ECHO "${INFO_COLOR}\t-t, -t=, --test, --test=SUPPORTED_TEST${END_COLOR}"
         $ECHO "${INFO_COLOR}\t\tSUPPORTED_TEST:${END_COLOR}"
         $ECHO "${INFO_COLOR}\t\t\t[SCA], performs static code analysis using Cppcheck${END_COLOR}"

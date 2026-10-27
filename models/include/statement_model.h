@@ -22,8 +22,8 @@
  * Protected helpers:
  *   - convert_pdfs_to_strings() — Turns std::any PDF handles into file paths for print workflows.
  *
- * The statement model owns the database file path and password, which are used
- * for all database operations. This class is non-copyable but movable.
+ * The statement model owns the database file path used for all database
+ * operations. This class is non-copyable but movable.
  *******************************************************************************/
 #ifndef _STATEMENT_MODEL_H_
 #define _STATEMENT_MODEL_H_
@@ -33,7 +33,7 @@ namespace model {
 class statement: public interface::model_operations {
 public:
 	statement() = delete;
-	explicit statement(const std::string&, const std::string&);
+	explicit statement(const std::string&);
 	statement(const statement&) = default;
 	statement(statement&&) = default;
 	statement& operator= (const statement&) = default;
@@ -50,7 +50,7 @@ protected:
 
 private:
 	std::string database_file;
-	std::string database_password;
+
 };
 }
 #endif

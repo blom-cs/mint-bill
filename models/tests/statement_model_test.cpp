@@ -6,10 +6,10 @@
  *
  * @details
  * This test group validates the behavior of model::statement when interacting
- * with the SQLite backing store and related models:
+ * with the plain Turso database and related models:
  *
  *   • Setup:
- *       - Initializes a shared test database file and password.
+ *       - Initializes the shared test database file.
  *       - Persists a generated client (with multiple emails) via model::client
  *         to ensure required foreign-key/business data exists.
  *
@@ -61,13 +61,12 @@ extern "C"
 TEST_GROUP(statement_model_test)
 {
 	const std::string db_file{"../storage/tests/model_test.db"};
-	const std::string db_password{"123456789"};
-	storage::database::sqlite database{db_file, db_password};
+	storage::database::sqlite database{db_file};
         data::client client_data{test::generate_client_data_multiple_emails()};
-	model::statement statement{db_file, db_password};
+	model::statement statement{db_file};
 	void setup()
 	{
-		model::client client_model{db_file, db_password};
+		model::client client_model{db_file};
 		(void) client_model.save(client_data);
 	}
 
@@ -96,7 +95,7 @@ TEST(statement_model_test, load_data_from_db)
 {
 	data::invoice invoice_data{test::generate_invoice_data("model testing")};
 	data::statement statement_data{test::generate_statement_data()};
-	model::invoice invoice_model{db_file, db_password};
+	model::invoice invoice_model{db_file};
 	(void) invoice_model.save(invoice_data);
 	(void) statement.save(statement_data);
 	for (const std::any& data : statement.load(invoice_data.get_name()))

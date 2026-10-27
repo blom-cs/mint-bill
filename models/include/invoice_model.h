@@ -19,8 +19,7 @@
  *        printing.
  *
  * The model holds:
- *  - `database_file`      : path to the underlying SQLite database.
- *  - `database_password`  : password required to open the database.
+ *  - `database_file` : path to the plain Turso database.
  ******************************************************************************/
 #ifndef _INVOICE_MODEL_H_
 #define _INVOICE_MODEL_H_
@@ -32,7 +31,7 @@ namespace model {
 class invoice: public interface::model_operations {
 public:
 	invoice() = delete;
-	explicit invoice(const std::string&, const std::string&);
+	explicit invoice(const std::string&);
 	invoice(const invoice&) = delete;
 	invoice(invoice&&) = delete;
 	invoice& operator=(const invoice&) = delete;
@@ -47,7 +46,7 @@ public:
 
 private:
 	std::string database_file;
-	std::string database_password;
+
 };
 }
 #endif

@@ -13,6 +13,7 @@ scripts/
 ├── build.sh
 ├── install.sh
 ├── mint-bill.sh
+├── package-rpm.sh
 ├── README.md
 ├── statistics.sh
 └── test.sh
@@ -24,12 +25,15 @@ scripts/
 
 ### **build.sh**
 Handles all CMake-based project builds. Supports:
-- Host builds for local development
-- Deploy builds for production packaging
-- Automatic build directory recreation
-- Packaging output into versioned tar archives
+- Host builds for local development (source-tree UI/CSS/DB paths)
+- RPM / deploy builds for offline Fedora packaging
 
 Called indirectly by `mint-bill.sh` or directly from command line.
+
+### **package-rpm.sh**
+Creates a Fedora RPM for tenant `tme` or `tce`, then packs `build/rpm/mint-bill-v<version>/`. The version is `PROJECT_VERSION_NUM` in `scripts/build.sh`.
+with those RPMs, the runtime dependency RPMs, and `install.sh`. The office PC
+runs that `install.sh` with no internet. `./install.sh` with no arguments prints usage help. `./install.sh --install` removes the previous program files and services, installs the new user-local application, and starts both programs. A live Turso database is left in place. `./install.sh --uninstall` removes the program files, user services, data directories, and backup directories. The live database is not inside the RPM.
 
 ---
 
@@ -37,7 +41,8 @@ Called indirectly by `mint-bill.sh` or directly from command line.
 Installs system-level dependencies required for development, GUI design, and system analysis.
 
 Responsibilities include:
-- Installing compilers, GTKmm, SQLCipher, Poppler, libsecret, and other dev tooling
+- Installing compilers, GTKmm, Poppler, and other dev tooling
+- The Turso static library is not a dnf package. Build it as described in the root README.
 - Installing CppUTest from source if not already present
 - Installing Flatpak-based design tools (Cambalache)
 - Installing analysis tools (Gaphor)
@@ -90,6 +95,10 @@ Examples:
 ```
 # Build for development
 ./scripts/mint-bill.sh --build host
+
+# Build an offline RPM (default tenant: tme)
+./scripts/mint-bill.sh --build rpm
+TENANT=tce ./scripts/mint-bill.sh --build rpm
 
 # Run unit tests
 ./scripts/mint-bill.sh --test unit

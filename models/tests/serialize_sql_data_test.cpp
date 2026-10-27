@@ -58,7 +58,6 @@ extern "C"
 }
 
 const std::string db_file{"../storage/tests/model_test.db"};
-const std::string db_password{"123456789"};
 
 /**********************************TEST LIST************************************
  * 1) Ensure the ability to convert data to SQL arguments. (Done)
@@ -66,7 +65,7 @@ const std::string db_password{"123456789"};
  ******************************************************************************/
 TEST_GROUP(business_serialize_test)
 {
-	storage::database::sqlite database{db_file, db_password};
+	storage::database::sqlite database{db_file};
 	void setup()
 	{
 	}
@@ -153,7 +152,7 @@ TEST(business_serialize_test, convert_sql_business_data_successfully)
  ******************************************************************************/
 TEST_GROUP(admin_serialize_test)
 {
-	storage::database::sqlite database{db_file, db_password};
+	storage::database::sqlite database{db_file};
 	void setup()
 	{
 	}
@@ -288,7 +287,7 @@ TEST(admin_serialize_test, convert_sql_admin_data_successfully_without_name)
  ******************************************************************************/
 TEST_GROUP(client_serialize_test)
 {
-	storage::database::sqlite database{db_file, db_password};
+	storage::database::sqlite database{db_file};
 	void setup()
 	{
 	}
@@ -383,7 +382,7 @@ TEST(client_serialize_test, convert_sql_business_data_successfully)
  ******************************************************************************/
 TEST_GROUP(column_serialize_test)
 {
-	storage::database::sqlite database{db_file, db_password};
+	storage::database::sqlite database{db_file};
 	void setup()
 	{
 	}
@@ -593,7 +592,7 @@ TEST(column_serialize_test, convert_sql_to_business_data_successfully)
  ******************************************************************************/
 TEST_GROUP(statement_serialize_test)
 {
-	storage::database::sqlite database{db_file, db_password};
+	storage::database::sqlite database{db_file};
 	void setup()
 	{
 		data::client client_data{test::generate_client_data()};
@@ -689,7 +688,7 @@ TEST(statement_serialize_test, convert_sql_to_business_data_successfully)
  ******************************************************************************/
 TEST_GROUP(invoice_serialize_test)
 {
-	storage::database::sqlite database{db_file, db_password};
+	storage::database::sqlite database{db_file};
 	void setup()
 	{
 	}

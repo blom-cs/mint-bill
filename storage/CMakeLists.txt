@@ -19,6 +19,7 @@ if(${FILES_IN_DIR} GREATER 0)
         target_include_directories(storage
                 PUBLIC
                 ${CMAKE_SOURCE_DIR}/app/include
+                ${CMAKE_SOURCE_DIR}/third_party/turso/include
                 PRIVATE
                 ${PROJECT_SOURCE_DIR}/include
         )

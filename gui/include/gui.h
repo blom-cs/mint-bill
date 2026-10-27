@@ -15,11 +15,10 @@
  *   Gtk::Builder instance and attaching the primary observer.
  *
  * - @interface register_page: Defines the behavior of the registration page,
- *   including construction, password injection, database searches, and saving.
+ *   including construction, database searches, and saving.
  *
  * - @interface operations_page: Defines the behavior of the operations page,
- *   including construction, password injection, database searches, printing,
- *   emailing, and saving.
+ *   including construction, database searches, printing, emailing, and saving.
  ******************************************************************************/
 #ifndef _GUI_H_
 #define _GUI_H_
@@ -55,12 +54,10 @@ public:
  * The register_page interface defines all required actions for the
  * registration workflow. Implementations should:
  * - Build the page from a Gtk::Builder.
- * - Set the database password for secure operations.
  * - Perform search operations for client or invoice retrieval.
  * - Save data after user modifications.
  *
  * @param builder A Gtk::Builder reference for UI construction.
- * @param password The database password used for secure access.
  * @param keyword A search term for lookup operations.
  *
  * @return true on success; false otherwise.
@@ -70,7 +67,6 @@ public:
         virtual ~register_page() = default;
 
         [[nodiscard]] virtual bool create(const Glib::RefPtr<Gtk::Builder>&) = 0;
-        [[nodiscard]] virtual bool set_database_password(const std::string&) = 0;
         [[nodiscard]] virtual bool search(const std::string&) = 0;
         [[nodiscard]] virtual bool save() = 0;
 };
@@ -81,12 +77,10 @@ public:
  * @details
  * The operations_page interface governs workflow-related actions such as:
  * - Page construction using Gtk::Builder and the main window handle.
- * - Database password injection.
  * - Searching, printing, emailing, and saving operational data.
  *
  * @param builder A Gtk::Builder reference for UI construction.
  * @param window  The parent window used for dialog associations.
- * @param password A database password for secure access.
  * @param keyword A keyword used for searching stored data.
  *
  * @return true on success; false otherwise.
@@ -96,7 +90,6 @@ public:
         virtual ~operations_page() = default;
 
         [[nodiscard]] virtual bool create(const Glib::RefPtr<Gtk::Builder>&, const std::shared_ptr<Gtk::Window>&) = 0;
-        [[nodiscard]] virtual bool set_database_password(const std::string&) = 0;
         [[nodiscard]] virtual bool search(const std::string&) = 0;
         [[nodiscard]] virtual bool print() = 0;
         [[nodiscard]] virtual bool email() = 0;

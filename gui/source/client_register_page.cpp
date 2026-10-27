@@ -18,7 +18,7 @@
  * Error handling ensures that the GUI remains responsive and consistent even
  * when data retrieval, saving, or UI binding issues occur.
  *******************************************************************************/
-#include <config.h>
+#include <paths.h>
 #include <syslog.h>
 #include <client_data.h>
 #include <client_register_page.h>
@@ -45,23 +45,6 @@ bool gui::client_register_page::create(const Glib::RefPtr<Gtk::Builder>& _ui_bui
         }
 
         return created;
-}
-
-bool gui::client_register_page::set_database_password(const std::string& _database_password)
-{
-	bool success{false};
-	if (_database_password.empty() == true)
-	{
-                syslog(LOG_CRIT, "CLIENT_REGISTER_PAGE: database password is empty - "
-                                 "filename %s, line number %d", __FILE__, __LINE__);
-	}
-	else
-	{
-		success = true;
-		this->database_password = _database_password;
-	}
-
-	return success;
 }
 
 bool gui::client_register_page::search(const std::string& _business_name)
@@ -134,7 +117,7 @@ void gui::client_register_page::connect_save_alert()
 
         this->save_alert_dialog->signal_response().connect([this] (int response) {
                 data::client data{extract_page_entries()};
-		model::client client_model{MINTBILL_DB_PATH, this->database_password};
+		model::client client_model{app::paths::database()};
                 switch(response)
                 {
                         case GTK_RESPONSE_YES:
@@ -199,7 +182,7 @@ void gui::client_register_page::clear_all_entries()
 
 void gui::client_register_page::display_on_ui(const std::string& _business_name)
 {
-	model::client client_model{MINTBILL_DB_PATH, this->database_password};
+	model::client client_model{app::paths::database()};
 	data::client data = std::any_cast<data::client> (client_model.load(_business_name));
 	if (data.is_valid() == false)
 	{

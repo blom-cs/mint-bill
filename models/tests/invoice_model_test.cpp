@@ -4,7 +4,7 @@
  * @brief Unit tests for the model::invoice class.
  *
  * @details
- * This test suite verifies the invoice model’s interaction with the SQLite
+ * This test suite verifies the invoice model’s interaction with the plain Turso
  * database and its composition of higher-level PDF invoice data. It covers:
  *
  *   • Rejecting invalid invoice data on save.
@@ -43,9 +43,8 @@ extern "C"
 TEST_GROUP(invoice_model_test)
 {
 	const std::string db_file{"../storage/tests/model_test.db"};
-	const std::string db_password{"123456789"};
-        model::invoice invoice_model{db_file, db_password};
-	storage::database::sqlite database{db_file, db_password};
+        model::invoice invoice_model{db_file};
+	storage::database::sqlite database{db_file};
 	void setup()
 	{
 		data::client client_data{test::generate_client_data()};

@@ -16,7 +16,7 @@
  *
  * Design notes:
  *  - The model owns only the database connection configuration
- *    (`database_file`, `database_password`); no connection is kept open
+ *    (`database_file`); no connection is kept open
  *    between calls.
  *  - All I/O is funneled through the generic `load()` / `save()` interface
  *    inherited from `interface::model_register`, using `std::any` as the
@@ -32,7 +32,7 @@ namespace model {
 class client: public interface::model_register {
 public:
 	client() = delete;
-	explicit client(const std::string&, const std::string&);
+	explicit client(const std::string&);
 	client(const client&) = delete;
 	client(client&&) = delete;
 	client& operator= (const client&) = delete;
@@ -44,7 +44,7 @@ public:
 
 private:
 	std::string database_file{""};
-	std::string database_password{""};
+
 
 	enum DATA_FIELDS {
 		NAME = 0,

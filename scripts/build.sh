@@ -1,27 +1,30 @@
 ################################################################################
 # File: build.sh
 # Description:
-#   Provides build automation for the project, supporting both host builds and
-#   deployable production builds. Wraps CMake configuration, binary generation,
-#   packaging, and build directory management.
+#   Provides build automation for the project, supporting host development
+#   builds and offline Fedora RPM production builds.
 #
 # Features:
-#   - Host and deploy build modes
-#   - Automatic build directory recreation
-#   - Packaging deployment artifacts into tar.gz archives
+#   - Host build mode (source-tree paths, Debug)
+#   - RPM / deploy build mode (FHS paths, Release, rpmbuild)
 #
 # Usage:
-#   ./build.sh <build-type>
+#   ./scripts/mint-bill.sh --build host
+#   ./scripts/mint-bill.sh --build rpm          # tenant defaults to tme
+#   TENANT=tce ./scripts/mint-bill.sh --build rpm
 #
 #   Supported build types:
 #       host    – Build for local development machine
-#       deploy  – Build and package for production release
+#       rpm     – Build an offline RPM (and dependency set when possible)
+#       deploy  – Alias for rpm
 #
 ################################################################################
 #!/bin/bash
 
 
-PROJECT_VERSION_NUM=0.0.1
+# Release version for the RPM, the CMake project, and the bundle directory.
+# The bundle name is mint-bill${PROJECT_VERSION_PREFIX}${PROJECT_VERSION_NUM}.
+PROJECT_VERSION_NUM=1.0.0
 PROJECT_VERSION_PREFIX=-v
 BIN_SUFFIX=
 CMAKE=cmake
@@ -30,28 +33,28 @@ BUILD_DIR=build
 APPLICATION_NAME=$(basename `pwd`)
 APPLICATION_ID="org.app.$APPLICATION_NAME-tme"
 BIN_DIR=$BUILD_DIR/$APPLICATION_NAME
-SUPPORTED_BUILD_TYPES=("host" "deploy")
 
 function run_build()
 {
         local build_type=$1
-        remove_directory $BUILD_DIR
-        if [[ $build_type == ${SUPPORTED_BUILD_TYPES[0]} ]];
-        then
-                $ECHO "${INFO_COLOR}Building for the host platform${END_COLOR}"
-                host_build
-        elif [[ $build_type == ${SUPPORTED_BUILD_TYPES[1]} ]];
-        then
-                $ECHO "${INFO_COLOR}Building for the target platform${END_COLOR}"
-                deploy_build
-        else
-                $ECHO "${ERROR_COLOR}ERROR: Build type not supported${END_COLOR}"
-        fi
+        case "${build_type}" in
+                host)
+                        $ECHO "${INFO_COLOR}Building for the host platform${END_COLOR}"
+                        remove_directory $BUILD_DIR
+                        host_build
+                        ;;
+                rpm|deploy)
+                        $ECHO "${INFO_COLOR}Building an offline RPM package${END_COLOR}"
+                        rpm_build
+                        ;;
+                *)
+                        $ECHO "${ERROR_COLOR}ERROR: Build type not supported${END_COLOR}"
+                        ;;
+        esac
 }
 
 function host_build()
 {
-	echo "Project name $POES"
         mkdir -p $BIN_DIR
         $CMAKE -S . -B $BIN_DIR --warn-uninitialized -DCMAKE_BUILD_TYPE=$BUILD_TYPE  \
                 -DAPP_NAME=$APPLICATION_NAME  \
@@ -61,11 +64,8 @@ function host_build()
         $CMAKE --build $BIN_DIR
 }
 
-function deploy_build()
+function rpm_build()
 {
-        $CMAKE -S . -B $BIN_DIR --warn-uninitialized -DCMAKE_BUILD_TYPE={$BUILD_TYPE}  \
-                -DAPP_NAME=$APPLICATION_NAME  \
-                -DBUILD_PROJECT=ON \
-		-DINSTALL_APPLICATION=ON
-        $CMAKE --build $BIN_DIR
+        local tenant=${TENANT:-all}
+        bash "$(dirname "${BASH_SOURCE[0]}")/package-rpm.sh" "${tenant}"
 }

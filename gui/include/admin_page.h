@@ -15,7 +15,6 @@
  *   - Populate the UI from database records via model::admin.
  *   - Extract widget state into a data::admin object for persistence.
  *   - Present confirmation dialogs and error alerts.
- *   - Maintain the database password required for model operations.
  *
  * The class is intentionally non-copyable and non-movable to prevent accidental
  * duplication of GTK widget ownership and ensure GUI correctness.
@@ -37,7 +36,6 @@ public:
 	~admin_page() override;
 
 	[[nodiscard]] virtual bool create(const Glib::RefPtr<Gtk::Builder>&) override;
-        [[nodiscard]] virtual bool set_database_password(const std::string&) override;
 	[[nodiscard]] virtual bool search(const std::string&) override;
 	[[nodiscard]] virtual bool save() override;
 
@@ -50,7 +48,6 @@ private:
 	data::admin extract_page_entries();
 
 private:
-	std::string database_password{""};
 
 private: // Label
 	Gtk::Label* organization_label{nullptr};

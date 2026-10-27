@@ -40,8 +40,8 @@
 #include <business_serialize.h>
 
 
-model::client::client(const std::string& _database_file, const std::string& _database_password)
-	: database_file{_database_file}, database_password{_database_password}
+model::client::client(const std::string& _database_file)
+	: database_file{_database_file}
 {
 }
 
@@ -61,7 +61,7 @@ std::any model::client::load(const std::string& _business_name)
         {
 		serialize::client client_serialize{};
 		storage::database::sql_parameters client_param = {_business_name};
-		storage::database::sqlite database{this->database_file, this->database_password};
+		storage::database::sqlite database{this->database_file};
 		client_data = std::move(std::any_cast<data::client> (
 					client_serialize.extract_data(
 						database.select(sql::query::client_select, client_param)
@@ -100,51 +100,22 @@ bool model::client::save(const std::any& _data)
 			business_data.get_cellphone(),
 			business_data.get_email()
 		};
-		storage::database::sqlite database{this->database_file, this->database_password};
-		if (database.transaction("BEGIN IMMEDIATE;") == false)
-		{
-			syslog(LOG_CRIT, "CLIENT_MODEL: failed to begin transaction - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (database.transaction("ROLLBACK;") == false)
+		storage::database::sqlite database{this->database_file};
+		saved = database.concurrently([&] () {
+			if (database.usert(sql::query::business_details_usert, business_params) == false)
 			{
-				syslog(LOG_CRIT, "CLIENT_MODEL: failed to rollback - "
+				syslog(LOG_CRIT, "CLIENT_MODEL: failed to execute sql query - "
 						 "filename %s, line number %d", __FILE__, __LINE__);
+				return false;
 			}
-		}
-		else if (database.usert(sql::query::business_details_usert, business_params) == false)
-		{
-			syslog(LOG_CRIT, "CLIENT_MODEL: failed to execute sql query - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (database.transaction("ROLLBACK;") == false)
+			if (database.usert(sql::query::client_usert, client_params) == false)
 			{
-				syslog(LOG_CRIT, "CLIENT_MODEL: failed to rollback - "
+				syslog(LOG_CRIT, "CLIENT_MODEL: failed to execute sql query - "
 						 "filename %s, line number %d", __FILE__, __LINE__);
+				return false;
 			}
-		}
-		else if (database.usert(sql::query::client_usert, client_params) == false)
-		{
-			syslog(LOG_CRIT, "CLIENT_MODEL: failed to execute sql query - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "CLIENT_MODEL: failed to rollback - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-		else if (database.transaction("COMMIT;") == false)
-		{
-			syslog(LOG_CRIT, "CLIENT_MODEL: failed to commit transaction - "
-					 "filename %s, line number %d", __FILE__, __LINE__);
-			if (database.transaction("ROLLBACK;") == false)
-			{
-				syslog(LOG_CRIT, "CLIENT_MODEL: failed to rollback - "
-						 "filename %s, line number %d", __FILE__, __LINE__);
-			}
-		}
-		else
-		{
-			saved = true;
-		}
+			return true;
+		});
         }
 
         return saved;
