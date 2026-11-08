@@ -55,16 +55,21 @@ function run_install()
 function install_develop()
 {
         DNF=$(which dnf)
-        dnf_packages=(python3 lcov cloc cppcheck git texinfo help2man make cmake dh-autoreconf autoconf
-                      automake binutils bison valgrind check gcovr gcc gcc-c++ glibc-devel curl gtk4
-                      gtk4-devel gtkmm4.0-devel cairomm cairomm-devel libcurl libcurl-devel poppler-cpp-devel
-                      debuginfo-install gtkmm30 glibmm24 xorg-x11-server-Xvfb)
+        # Libraries the application links, plus the tools mint-bill.sh uses to
+        # build and test them. gtkmm-3 (gtkmm30, glibmm24) is not one of them.
+        dnf_packages=(python3 lcov cloc cppcheck git texinfo help2man make cmake pkgconfig
+                      dh-autoreconf autoconf automake binutils bison valgrind check gcovr
+                      gcc gcc-c++ glibc-devel curl gtk4 gtk4-devel gtkmm4.0-devel
+                      cairomm cairomm-devel libcurl libcurl-devel poppler-cpp-devel
+                      xorg-x11-server-Xvfb dbus-daemon dbus-x11 mesa-libGLES)
 
         if [[ ! -z $DNF ]];
         then
                 sudo dnf update
                 sudo dnf -y install ${dnf_packages[@]}
-                sudo dnf swap libcurl-minimal libcurl
+                if rpm -q libcurl-minimal >/dev/null 2>&1; then
+                        sudo dnf -y swap libcurl-minimal libcurl
+                fi
                 install_cpputest
                 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         else

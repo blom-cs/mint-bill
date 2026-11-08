@@ -213,4 +213,41 @@ grep -q 'After=graphical-session-pre.target' \
 	"${home}/.config/systemd/user/mint-bill-tme.service" \
 	|| fail "tme service still waits for the graphical session"
 
+# The full libcurl RPM is the one that provides SMTP. The installer must
+# swap that file in for libcurl-minimal, and must not select the minimal RPM.
+runtime="${work}/runtime"
+mkdir -p "${runtime}/deps" "${runtime}/bin"
+arch="$(uname -m)"
+touch "${runtime}/deps/libcurl-8.6.0-10.fc40.${arch}.rpm"
+touch "${runtime}/deps/libcurl-minimal-8.6.0-10.fc40.${arch}.rpm"
+touch "${runtime}/deps/gtkmm4.0-4.14.0-1.fc40.${arch}.rpm"
+cat > "${runtime}/bin/rpm" <<'EOF'
+#!/bin/bash
+if [[ "$1" == "-q" && "$2" == "libcurl-minimal" ]]; then
+	exit 0
+fi
+exit 1
+EOF
+chmod 755 "${runtime}/bin/rpm"
+cat > "${runtime}/bin/sudo" <<'EOF'
+#!/bin/bash
+printf 'sudo'
+printf ' %s' "$@"
+printf '\n'
+EOF
+chmod 755 "${runtime}/bin/sudo"
+(
+	# shellcheck disable=SC1090
+	source "${INSTALL}"
+	SCRIPT_DIR="${runtime}"
+	PATH="${runtime}/bin:${PATH}"
+	install_runtime_deps
+) >"${work}/runtime.out"
+grep -q "sudo dnf -y swap libcurl-minimal ${runtime}/deps/libcurl-8.6.0-10.fc40.${arch}.rpm" \
+	"${work}/runtime.out" || fail "installer did not swap in the full libcurl RPM"
+grep -q "libcurl-minimal-8.6.0" "${work}/runtime.out" \
+	&& fail "installer selected the libcurl-minimal RPM"
+grep -F -q "sudo dnf -y install ${runtime}/deps/gtkmm4.0-4.14.0-1.fc40.${arch}.rpm" \
+	"${work}/runtime.out" || fail "installer did not install the other runtime RPMs"
+
 printf 'OK\n'
