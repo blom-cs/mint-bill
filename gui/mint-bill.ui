@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<!-- Created with Cambalache 0.96.3 -->
+<!-- Created with Cambalache 1.2.0 -->
 <interface>
   <!-- interface-name invoice-system.ui -->
   <requires lib="gtk" version="4.14"/>
@@ -945,7 +945,7 @@
 
 2) - Is u e-pos korrek ingevul?
 
-3) - Is die staatskedule formaat korrek dag/maand, dag/week? Byvoorbeeld, 4, 4 beteken dat die staat 4 keer 'n maand gegenereer gaan word op elke 4 dag van die week vir.</property>
+3) - Is die staatskedule in die formaat N,D sonder 'n spasie? N is weekliks. N = 1 is een staat per week. N = 2 is een staat elke 2 weke. N = 3 is een staat elke 3 weke. N = 4 is een staat elke 4 weke. D is die dag van die week, van 1 (Maandag) tot 7 (Sondag). Byvoorbeeld, 4,4 is een staat elke 4 weke op Donderdag.</property>
     <property name="title">Maak Seker Oor Die Volgende</property>
     <property name="transient-for">main-window</property>
   </object>
@@ -993,7 +993,7 @@
     <property name="buttons">yes-no</property>
     <property name="destroy-with-parent">True</property>
     <property name="modal">True</property>
-    <property name="text">Is u seker u wil die faktuur e-pos?</property>
+    <property name="text">Is u seker u wil die faktuur of fakture e-pos?</property>
     <property name="title">Waarskuwing</property>
     <property name="transient-for">main-window</property>
   </object>
@@ -1048,7 +1048,7 @@
     <property name="buttons">close</property>
     <property name="destroy-with-parent">True</property>
     <property name="modal">True</property>
-    <property name="text">Kies asseblief 'n faktuur om te e-pos of te print</property>
+    <property name="text">Kies asseblief 'n faktuur of fakture om te e-pos of te print</property>
     <property name="transient-for">main-window</property>
   </object>
   <object class="GtkMessageDialog" id="statement-no-item-selected-alert">
@@ -1056,7 +1056,7 @@
     <property name="buttons">close</property>
     <property name="destroy-with-parent">True</property>
     <property name="modal">True</property>
-    <property name="text">Kies asseblief 'n staat om te e-pos, print, of stoor.</property>
+    <property name="text">Kies asseblief 'n staat of state om te e-pos, print, of stoor.</property>
     <property name="transient-for">main-window</property>
   </object>
   <object class="GtkMessageDialog" id="statement-save-button-alert">

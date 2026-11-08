@@ -117,9 +117,13 @@ chmod 755 "${BUNDLE}/install.sh"
 
 if command -v dnf >/dev/null 2>&1; then
 	echo "INFO: fetching local (offline) runtime RPMs into ${BUNDLE}/deps"
+	# Same libraries the application links. libcurl is the full build
+	# (SMTP). The packages after it are required by that build and are
+	# not pulled in by libcurl-minimal.
 	if dnf download --destdir "${BUNDLE}/deps" \
-		gtkmm4.0 glibmm2.68 pangomm2.48 cairomm1.16 libsigc++30 \
-		poppler-cpp poppler; then
+		gtkmm4.0 gtk4 glibmm2.68 pangomm2.48 cairomm1.16 libsigc++30 \
+		poppler-cpp poppler \
+		libcurl libbrotli libidn2 openldap libnghttp2 libpsl libssh; then
 		rm -f "${BUNDLE}/deps"/*.i686.rpm
 	else
 		echo "WARNING: could not download runtime RPMs; ${BUNDLE}/deps may be incomplete."
@@ -141,6 +145,8 @@ echo "On the office PC (no internet), unpack the archive and run:"
 echo "  ./install.sh"
 echo "That prints the usage help. To install:"
 echo "  ./install.sh --install"
+echo "That asks for the root password to install the libraries in deps/,"
+echo "then installs the programs for the current user."
 echo "A live Turso database is left in place."
 echo "To remove the programs, services, data, and backups:"
 echo "  ./install.sh --uninstall"

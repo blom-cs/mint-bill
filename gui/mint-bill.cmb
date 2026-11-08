@@ -1,9 +1,9 @@
 <?xml version='1.0' encoding='UTF-8' standalone='no'?>
 <!DOCTYPE cambalache-project SYSTEM "cambalache-project.dtd">
-<!-- Created with Cambalache 0.96.3 -->
-<cambalache-project version="0.96.0" target_tk="gtk-4.0">
-  <css filename="mint-bill.css" is_global="1"/>
-  <ui filename="mint-bill.ui" sha256="6c38886827d3102055b7d3fbb3b72c0ea4351aed7d6faf43ded21ac3d02196ae">
+<!-- Created with Cambalache 1.2.0 -->
+<cambalache-project version="1.0.0" target_tk="gtk-4.0" depends="casilda-1.0,libadwaita-1,webkitgtk-6.0">
+  <css is_global="1" filename="mint-bill.css"/>
+  <ui filename="mint-bill.ui">
     <css-provider>mint-bill.css</css-provider>
   </ui>
 </cambalache-project>

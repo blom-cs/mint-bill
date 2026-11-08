@@ -7,15 +7,15 @@ SHELL ["/bin/bash", "-c"]
 # Installing all development dependencies
 RUN dnf -y install \
     python3 lcov cloc cppcheck git texinfo help2man \
-    make cmake dh-autoreconf autoconf automake \
+    make cmake pkgconfig dh-autoreconf autoconf automake \
     binutils bison valgrind check gcovr gcc gcc-c++ \
     glibc-devel curl gtk4 gtk4-devel gtkmm4.0-devel \
-    cairomm cairomm-devel libcurl libcurl-devel \ 
+    cairomm cairomm-devel libcurl libcurl-devel \
     poppler-cpp-devel xorg-x11-server-Xvfb dbus-daemon \
     dbus-x11 mesa-libGLES
-    
 
-RUN dnf swap libcurl-minimal libcurl
+# Fedora's libcurl-minimal has no SMTP. Email uses smtp://smtp.gmail.com:587.
+RUN if rpm -q libcurl-minimal >/dev/null 2>&1; then dnf -y swap libcurl-minimal libcurl; fi
 
 # turso_sqlite3 static library. This is Turso's sqlite3-compatible C API,
 # not the libSQL SDK. The commit matches the tree used for the vendored header.

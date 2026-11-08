@@ -35,7 +35,9 @@ Run with no arguments to show this help. An action is required.
 Actions:
   --install
       Install mint-bill-tme and mint-bill-tce for this user and
-      start both programs. A live Turso database is left in place.
+      start both programs. Libraries in deps/ are installed with
+      sudo when this user is not root. A live Turso database is
+      left in place.
   --uninstall
       Remove mint-bill-tme and mint-bill-tce, their user services,
       data directories, and backup directories.
@@ -275,16 +277,51 @@ install_rpms() {
 
 install_runtime_deps() {
 	local deps=()
+	local rest=()
+	local rpm
+	local base
+	local libcurl_rpm=""
+	local arch
 	shopt -s nullglob
 	deps=("${SCRIPT_DIR}"/deps/*.rpm)
 	shopt -u nullglob
 	[[ "${#deps[@]}" -gt 0 ]] || return 0
-	if [[ "$(id -u)" -ne 0 ]]; then
-		log "runtime RPMs are in ${SCRIPT_DIR}/deps. Install them as root: dnf install ${SCRIPT_DIR}/deps/*.rpm"
-		return 0
-	fi
+
+	# libcurl-8.x.<arch>.rpm is the full SMTP build. Leave libcurl-minimal
+	# and libcurl-devel out of that match.
+	arch="$(uname -m)"
+	for rpm in "${deps[@]}"; do
+		base="$(basename "${rpm}")"
+		if [[ "${base}" == libcurl-[0-9]*."${arch}".rpm ]]; then
+			libcurl_rpm="${rpm}"
+		elif [[ "${base}" == libcurl-minimal-* || "${base}" == libcurl-devel-* ]]; then
+			continue
+		else
+			rest+=("${rpm}")
+		fi
+	done
+
 	command -v dnf >/dev/null 2>&1 || die "dnf is required to install ${SCRIPT_DIR}/deps"
-	dnf -y install "${deps[@]}"
+	if [[ "$(id -u)" -ne 0 ]]; then
+		command -v sudo >/dev/null 2>&1 || die "sudo is required to install ${SCRIPT_DIR}/deps"
+		log "installing runtime libraries from ${SCRIPT_DIR}/deps; a root password may be required"
+	fi
+	if [[ -n "${libcurl_rpm}" ]] && rpm -q libcurl-minimal >/dev/null 2>&1; then
+		as_root dnf -y swap libcurl-minimal "${libcurl_rpm}"
+	elif [[ -n "${libcurl_rpm}" ]]; then
+		rest+=("${libcurl_rpm}")
+	fi
+	if [[ "${#rest[@]}" -gt 0 ]]; then
+		as_root dnf -y install "${rest[@]}"
+	fi
+}
+
+as_root() {
+	if [[ "$(id -u)" -eq 0 ]]; then
+		"$@"
+	else
+		sudo "$@"
+	fi
 }
 
 enable_units() {

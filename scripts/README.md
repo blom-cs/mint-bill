@@ -41,7 +41,8 @@ runs that `install.sh` with no internet. `./install.sh` with no arguments prints
 Installs system-level dependencies required for development, GUI design, and system analysis.
 
 Responsibilities include:
-- Installing compilers, GTKmm, Poppler, and other dev tooling
+- Installing the libraries the application links: gtkmm-4.0, cairomm-1.16, poppler-cpp, and the full libcurl package. The full package is required because email uses SMTP, and Fedora's libcurl-minimal does not include it. When libcurl-minimal is installed, the script replaces it.
+- Installing the compilers and test tools `mint-bill.sh` uses to build that application
 - The Turso static library is not a dnf package. Build it as described in the root README.
 - Installing CppUTest from source if not already present
 - Installing Flatpak-based design tools (Cambalache)
